@@ -1,0 +1,37 @@
+<?php
+
+namespace App\Repositories\Contracts;
+
+use App\Models\AssessmentAttempt;
+use App\Models\AssessmentQuestion;
+use App\Models\User;
+use Illuminate\Support\Collection;
+
+interface AssessmentRepositoryInterface
+{
+    /** 7 pertanyaan aktif, terurut. */
+    public function activeQuestions(): Collection;
+
+    // ── Kelola pertanyaan (admin) ───────────────────────────────────────────
+    public function allQuestions(): Collection;
+
+    public function findQuestion(int $id): ?AssessmentQuestion;
+
+    public function createQuestion(array $data): AssessmentQuestion;
+
+    public function updateQuestion(AssessmentQuestion $question, array $data): AssessmentQuestion;
+
+    public function deleteQuestion(AssessmentQuestion $question): void;
+
+    /** Attempt pada tanggal tertentu milik murid, jika ada. */
+    public function attemptForDate(int $userId, string $date): ?AssessmentAttempt;
+
+    /** Daftar tanggal (Y-m-d) yang sudah diisi assessment untuk sebuah siklus. */
+    public function assessedDatesForCycle(int $cycleId): array;
+
+    /** Buat attempt beserta jawaban-jawabannya dalam satu transaksi. */
+    public function createAttemptWithAnswers(array $attemptData, array $answers): AssessmentAttempt;
+
+    /** Riwayat attempt murid untuk grafik tren (Recharts). */
+    public function historyForUser(User $user): Collection;
+}

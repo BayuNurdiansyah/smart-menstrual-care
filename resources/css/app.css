@@ -1,0 +1,50 @@
+/* Font Awesome Free — aset lokal via npm, dibundle Vite (bukan CDN). */
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --color-primary: #e879a0;
+        --color-primary-dark: #c45880;
+    }
+
+    html {
+        font-family: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+    }
+
+    body {
+        @apply text-gray-800;
+        /* Gradasi feminin + pola lembut (aset lokal) agar tidak polos. */
+        background-color: #fdf2f8;
+        background-image:
+            url('/img/bg-pattern.svg'),
+            linear-gradient(160deg, #ffe4ef 0%, #fdf2f8 38%, #f3e8ff 100%);
+        background-attachment: fixed;
+        background-size: 60px 60px, cover;
+    }
+}
+
+@layer components {
+    /* Kartu lembut bergaya feminin */
+    .soft-card {
+        @apply rounded-2xl border border-white/60 bg-white/80 shadow-sm backdrop-blur-sm;
+    }
+
+    /* Kartu konten putih dengan sudut membulat & bayangan halus */
+    .card-soft {
+        @apply rounded-2xl border border-pink-100 bg-white p-5 shadow-sm;
+    }
+
+    /* Tombol utama bergradien feminin */
+    .btn-primary {
+        @apply rounded-xl bg-gradient-to-r from-primary-400 to-primary-600 px-4 py-3 text-base font-semibold text-white shadow-md transition hover:from-primary-500 hover:to-primary-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-60;
+    }
+
+    /* Tombol garis (outline) */
+    .btn-outline {
+        @apply rounded-xl border border-primary bg-white px-4 py-3 text-base font-semibold text-primary transition hover:bg-primary-50 disabled:opacity-60;
+    }
+}
