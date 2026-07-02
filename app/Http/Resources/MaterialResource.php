@@ -17,6 +17,9 @@ class MaterialResource extends JsonResource
             'youtube_video_id' => $this->youtube_video_id,
             // Accessor di Model -> URL siap pakai untuk <iframe>.
             'youtube_embed_url' => $this->youtube_embed_url,
+            'audio_path'       => $this->audio_path,
+            // Accessor di Model -> URL siap pakai untuk <audio>.
+            'audio_url'        => $this->audio_url,
             'order'            => $this->order,
             'is_published'     => (bool) $this->is_published,
             // Langkah berilustrasi (opsional) + galeri gambar (opsional).

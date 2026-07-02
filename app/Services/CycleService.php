@@ -16,9 +16,22 @@ class CycleService
      */
     private const MAX_PERIOD_DAYS = 10;
 
+    /** Slug tahap yang badge-nya diberikan saat siklus pertama ditutup. */
+    private const HEALTHY_HABIT_SLUG = 'healthy-habit-builder';
+
     public function __construct(
         private readonly CycleRepositoryInterface $cycleRepository,
+        private readonly GameService $gameService,
     ) {
+    }
+
+    /**
+     * Dipanggil tiap kali sebuah siklus DITUTUP: tandai tahap Healthy Habit
+     * Builder selesai & award badge (idempotent — hanya pertama kali memberi).
+     */
+    private function onCycleClosed(int $userId): void
+    {
+        $this->gameService->completeStageBySlug($userId, self::HEALTHY_HABIT_SLUG);
     }
 
     /**
@@ -47,6 +60,7 @@ class CycleService
                     $autoEndDate->toDateString(),
                     auto: true
                 );
+                $this->onCycleClosed($userId);
             }
         }
 
@@ -64,7 +78,10 @@ class CycleService
             return null;
         }
 
-        return $this->cycleRepository->close($cycle, $endDate, auto: false);
+        $closed = $this->cycleRepository->close($cycle, $endDate, auto: false);
+        $this->onCycleClosed($userId);
+
+        return $closed;
     }
 
     /**
@@ -138,11 +155,18 @@ class CycleService
         ], static fn ($value) => $value !== null);
 
         // Penutupan manual: end_date diisi -> status closed, bukan auto.
-        if (! empty($payload['end_date'])) {
+        $isClosing = ! empty($payload['end_date']);
+        if ($isClosing) {
             $payload['status'] = 'closed';
             $payload['auto_closed'] = false;
         }
 
-        return $this->cycleRepository->update($cycle, $payload);
+        $updated = $this->cycleRepository->update($cycle, $payload);
+
+        if ($isClosing) {
+            $this->onCycleClosed($userId);
+        }
+
+        return $updated;
     }
 }

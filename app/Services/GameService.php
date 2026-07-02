@@ -84,6 +84,22 @@ class GameService
     }
 
     /**
+     * Tandai tahap selesai berdasarkan slug (mis. 'healthy-habit-builder'),
+     * lalu evaluasi badge. Mengembalikan badge yang BARU diberikan.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function completeStageBySlug(int $userId, string $slug): array
+    {
+        $stage = $this->stageRepository->findBySlug($slug);
+        if ($stage === null) {
+            return [];
+        }
+
+        return $this->completeStage($userId, $stage->id);
+    }
+
+    /**
      * Validasi pencapaian/Badges berbasis penyelesaian tahap pembelajaran.
      * Memberikan badge tiap tahap yang sudah selesai; karena badge tahap-4
      * adalah "Healthy Habit Champion", menyelesaikan keempat tahap otomatis

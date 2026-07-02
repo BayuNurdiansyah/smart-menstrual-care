@@ -6,6 +6,7 @@ import { stageById } from '../../utils/stages';
 import SpinWheel from '../games/SpinWheel';
 import MemoryCard from '../games/MemoryCard';
 import SpeakButton from '../../components/SpeakButton';
+import FinishLearningButton from '../../components/FinishLearningButton';
 
 // Susun seluruh teks materi untuk dibacakan (text-to-speech).
 function buildSpeech(material) {
@@ -121,9 +122,9 @@ export default function ModulStage() {
                                 {/* Detail isi (muncul saat dibuka) */}
                                 {open && (
                                     <div className="px-5 py-4">
-                                        {/* Tombol Text-to-Speech (Web Speech API, gratis) */}
+                                        {/* Narasi suara asli diunggah admin lewat panel; jatuh ke TTS jika belum ada. */}
                                         <div className="mb-3">
-                                            <SpeakButton text={buildSpeech(material)} />
+                                            <SpeakButton text={buildSpeech(material)} audioSrc={material.audio_url} />
                                         </div>
 
                                         {material.text_content && (
@@ -202,6 +203,14 @@ export default function ModulStage() {
                                 <i className="fa-solid fa-chevron-right" aria-hidden="true" />
                             </div>
                         </button>
+                    </section>
+                )}
+
+                {/* Tahap 3: tanpa game -> tombol tandai selesai untuk badge */}
+                {!loading && !error && Number(stageId) === 3 && (
+                    <section>
+                        <h2 className="mb-3 text-base font-bold text-gray-800">Selesaikan Tahap</h2>
+                        <FinishLearningButton stageId={3} />
                     </section>
                 )}
 

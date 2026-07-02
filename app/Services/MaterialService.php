@@ -56,6 +56,7 @@ class MaterialService
                 'title'            => $data['title'],
                 'text_content'     => $data['text_content'] ?? null,
                 'youtube_video_id' => $data['youtube_url'] ?? $data['youtube_video_id'] ?? null,
+                'audio_path'       => $data['audio_path'] ?? null,
                 'order'            => $order,
                 'is_published'     => $data['is_published'] ?? true,
             ]);
@@ -108,6 +109,7 @@ class MaterialService
                 'title'            => $data['title'] ?? null,
                 'text_content'     => $data['text_content'] ?? null,
                 'youtube_video_id' => $data['youtube_url'] ?? $data['youtube_video_id'] ?? null,
+                'audio_path'       => $data['audio_path'] ?? null,
                 'order'            => $newOrder,
                 'is_published'     => $data['is_published'] ?? null,
             ], static fn ($value) => $value !== null);

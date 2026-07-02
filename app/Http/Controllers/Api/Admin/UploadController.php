@@ -27,4 +27,23 @@ class UploadController extends Controller
             'url'  => Storage::url($path),
         ], 201);
     }
+
+    /**
+     * Upload satu rekaman narasi (MP3/WAV/M4A) untuk sebuah materi.
+     * Disimpan di disk "public" -> dapat diakses via /storage/...
+     * Mengembalikan path (disimpan ke DB) dan url (untuk preview/putar).
+     */
+    public function storeAudio(Request $request): JsonResponse
+    {
+        $request->validate([
+            'audio' => ['required', 'file', 'mimes:mp3,mpga,wav,m4a,ogg', 'max:20480'],
+        ]);
+
+        $path = $request->file('audio')->store('materials/audio', 'public');
+
+        return response()->json([
+            'path' => $path,
+            'url'  => Storage::url($path),
+        ], 201);
+    }
 }

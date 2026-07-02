@@ -53,10 +53,27 @@ class AssessmentRepository implements AssessmentRepositoryInterface
             ->first();
     }
 
+    public function attemptWithAnswersForDate(int $userId, string $date): ?AssessmentAttempt
+    {
+        return AssessmentAttempt::where('user_id', $userId)
+            ->whereDate('assessment_date', $date)
+            ->with('answers')
+            ->first();
+    }
+
     public function assessedDatesForCycle(int $cycleId): array
     {
         // get() agar cast 'date' aktif (pluck builder mengembalikan nilai mentah).
         return AssessmentAttempt::where('cycle_id', $cycleId)
+            ->orderBy('assessment_date')
+            ->get()
+            ->map(fn (AssessmentAttempt $a) => $a->assessment_date->toDateString())
+            ->all();
+    }
+
+    public function allAssessedDatesForUser(int $userId): array
+    {
+        return AssessmentAttempt::where('user_id', $userId)
             ->orderBy('assessment_date')
             ->get()
             ->map(fn (AssessmentAttempt $a) => $a->assessment_date->toDateString())
@@ -79,6 +96,27 @@ class AssessmentRepository implements AssessmentRepositoryInterface
             ], $answers);
 
             // Bulk insert -> satu query, lebih efisien daripada save per baris.
+            $attempt->answers()->insert($rows);
+
+            return $attempt->load('answers');
+        });
+    }
+
+    public function updateAttemptWithAnswers(AssessmentAttempt $attempt, array $attemptData, array $answers): AssessmentAttempt
+    {
+        // Koreksi isian yang sudah ada (mis. salah klik): ganti total jawaban.
+        return DB::transaction(function () use ($attempt, $attemptData, $answers) {
+            $attempt->fill($attemptData)->save();
+            $attempt->answers()->delete();
+
+            $now = now();
+            $rows = array_map(fn (array $a) => [
+                'attempt_id'  => $attempt->id,
+                'question_id' => $a['question_id'],
+                'score'       => $a['score'],
+                'created_at'  => $now,
+                'updated_at'  => $now,
+            ], $answers);
             $attempt->answers()->insert($rows);
 
             return $attempt->load('answers');

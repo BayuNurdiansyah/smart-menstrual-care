@@ -19,5 +19,12 @@ export const uploadImage = (file) => {
     return api.post('/admin/uploads', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 
+// Upload audio narasi materi -> { path, url }
+export const uploadAudio = (file) => {
+    const fd = new FormData();
+    fd.append('audio', file);
+    return api.post('/admin/uploads-audio', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+
 // ── Murid (read-only per tahap) ─────────────────────────────────────────────
 export const getStageMaterials = (stageId) => api.get(`/stages/${stageId}/materials`);

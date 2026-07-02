@@ -55,10 +55,12 @@ Route::prefix('v1')->group(function () {
             Route::put('cycles/{cycle}', [CycleController::class, 'editHistory']);
 
             // Assessment harian (selama menstruasi)
-            Route::get('assessments/questions',     [AssessmentController::class, 'questions']);
-            Route::get('assessments/daily-status',  [AssessmentController::class, 'dailyStatus']);
-            Route::post('assessments',              [AssessmentController::class, 'store']);
-            Route::get('assessments/chart',         [AssessmentController::class, 'getChartData']);
+            Route::get('assessments/questions',       [AssessmentController::class, 'questions']);
+            Route::get('assessments/daily-status',    [AssessmentController::class, 'dailyStatus']);
+            Route::get('assessments/assessed-dates',  [AssessmentController::class, 'assessedDates']);
+            Route::get('assessments/answers',         [AssessmentController::class, 'answers']);
+            Route::post('assessments',                [AssessmentController::class, 'store']);
+            Route::get('assessments/chart',           [AssessmentController::class, 'getChartData']);
 
             // Gamifikasi
             Route::post('games/score',  [GameController::class, 'submitScore']);
@@ -75,6 +77,8 @@ Route::prefix('v1')->group(function () {
 
             // Upload gambar (ilustrasi langkah / galeri materi)
             Route::post('uploads', [UploadController::class, 'store']);
+            // Upload audio (narasi materi)
+            Route::post('uploads-audio', [UploadController::class, 'storeAudio']);
 
             // Kelola soal Assessment
             Route::apiResource('assessment-questions', AssessmentQuestionController::class)

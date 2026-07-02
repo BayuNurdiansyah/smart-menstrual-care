@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 // Web Speech API (gratis, bawaan browser, mendukung bahasa Indonesia).
+// Dipakai sebagai FALLBACK selama rekaman suara asli (audioSrc) belum tersedia.
 const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
 /** Pilih suara Bahasa Indonesia bila tersedia. */
@@ -33,27 +34,41 @@ function chunkText(text, max = 180) {
     return chunks;
 }
 
-export default function SpeakButton({ text, label = 'Dengarkan' }) {
+/**
+ * @param {string} [audioSrc] URL rekaman suara asli (mis. "/audio/materi/3.mp3").
+ *   Jika diberikan dan berhasil dimuat, diputar sebagai <audio> — TTS browser
+ *   tidak dipakai. Jika file belum ada (404) atau audioSrc tidak diisi,
+ *   otomatis jatuh ke TTS bawaan browser.
+ */
+export default function SpeakButton({ text, label = 'Dengarkan', audioSrc }) {
     const [speaking, setSpeaking] = useState(false);
+    const [audioBroken, setAudioBroken] = useState(false);
     const mounted = useRef(true);
+    const audioRef = useRef(null);
 
-    // Hangatkan daftar suara (dimuat async oleh browser).
+    const useRealAudio = Boolean(audioSrc) && !audioBroken;
+
+    // Hangatkan daftar suara TTS (dimuat async oleh browser).
     useEffect(() => {
         if (supported) window.speechSynthesis.getVoices();
         return () => {
             mounted.current = false;
             if (supported) window.speechSynthesis.cancel();
+            audioRef.current?.pause();
         };
     }, []);
 
-    if (!supported || !text?.trim()) return null;
+    useEffect(() => { setAudioBroken(false); }, [audioSrc]);
+
+    if ((!useRealAudio && !supported) || !text?.trim()) return null;
 
     const stop = () => {
         window.speechSynthesis.cancel();
+        audioRef.current?.pause();
         setSpeaking(false);
     };
 
-    const speak = () => {
+    const speakWithTts = () => {
         window.speechSynthesis.cancel(); // hentikan materi lain yang sedang dibaca
         const voice = pickIndonesianVoice();
         const chunks = chunkText(text);
@@ -74,16 +89,42 @@ export default function SpeakButton({ text, label = 'Dengarkan' }) {
         setSpeaking(true);
     };
 
+    const speak = () => {
+        if (!useRealAudio) {
+            speakWithTts();
+            return;
+        }
+
+        const audio = audioRef.current;
+        audio.currentTime = 0;
+        audio.play().catch(() => {
+            // File belum ada / gagal diputar -> jatuh ke TTS.
+            if (mounted.current) setAudioBroken(true);
+            speakWithTts();
+        });
+        setSpeaking(true);
+    };
+
     return (
-        <button
-            type="button"
-            onClick={speaking ? stop : speak}
-            aria-label={speaking ? 'Hentikan pembacaan' : 'Bacakan materi ini'}
-            className="inline-flex items-center gap-2 rounded-full border border-primary px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary-50"
-        >
-            {/* PLACEHOLDER Font Awesome */}
-            <i className={`fa-solid ${speaking ? 'fa-stop' : 'fa-volume-high'}`} aria-hidden="true" />
-            {speaking ? 'Hentikan' : label}
-        </button>
+        <>
+            {audioSrc && (
+                <audio
+                    ref={audioRef}
+                    src={audioSrc}
+                    preload="none"
+                    onEnded={() => mounted.current && setSpeaking(false)}
+                    onError={() => mounted.current && setAudioBroken(true)}
+                />
+            )}
+            <button
+                type="button"
+                onClick={speaking ? stop : speak}
+                aria-label={speaking ? 'Hentikan pembacaan' : 'Bacakan materi ini'}
+                className="inline-flex items-center gap-2 rounded-full border border-primary px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary-50"
+            >
+                <i className={`fa-solid ${speaking ? 'fa-stop' : 'fa-volume-high'}`} aria-hidden="true" />
+                {speaking ? 'Hentikan' : label}
+            </button>
+        </>
     );
 }
