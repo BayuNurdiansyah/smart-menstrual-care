@@ -78,7 +78,8 @@ Route::prefix('v1')->group(function () {
             // Upload gambar (ilustrasi langkah / galeri materi)
             Route::post('uploads', [UploadController::class, 'store']);
             // Upload audio (narasi materi)
-            Route::post('uploads-audio', [UploadController::class, 'storeAudio']);
+            Route::post('uploads-audio',   [UploadController::class, 'storeAudio']);
+            Route::delete('uploads-audio', [UploadController::class, 'destroyAudio']);
 
             // Kelola soal Assessment
             Route::apiResource('assessment-questions', AssessmentQuestionController::class)

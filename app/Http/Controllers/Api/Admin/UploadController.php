@@ -46,4 +46,25 @@ class UploadController extends Controller
             'url'  => Storage::url($path),
         ], 201);
     }
+
+    public function destroyAudio(Request $request): JsonResponse
+    {
+        $request->validate([
+            'path' => ['required', 'string'],
+        ]);
+
+        $path = $request->input('path');
+
+        if (!str_starts_with($path, 'materials/audio/')) {
+            return response()->json(['message' => 'Path tidak valid.'], 422);
+        }
+
+        if (!Storage::disk('public')->exists($path)) {
+            return response()->json(['message' => 'File tidak ditemukan.'], 404);
+        }
+
+        Storage::disk('public')->delete($path);
+
+        return response()->json(['message' => 'Audio berhasil dihapus.']);
+    }
 }
