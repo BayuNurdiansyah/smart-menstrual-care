@@ -111,20 +111,23 @@ export default function KalenderTracker() {
         setModal({ mode: 'assess', date: ymd, day, canFinish, editing });
     };
 
-    // Buka kembali tanggal yang sudah diisi, untuk dikoreksi (antisipasi salah klik).
+    // Buka kembali tanggal yang sudah diisi, untuk dikoreksi (antisipasi salah
+    // klik). Berlaku kapan saja — termasuk siklus yang sudah auto-closed
+    // (lebih dari 10 hari) — bukan cuma selama siklus itu masih berjalan.
     const openAssessForEdit = async (ymd) => {
         setBusy(true); setError('');
         try {
             const res = await getAssessmentAnswers(ymd);
-            const existing = res.data.data?.answers ?? {};
+            const data = res.data.data ?? {};
             const prefilled = Object.fromEntries(
-                Object.entries(existing).map(([qid, score]) => [Number(qid), Number(score)])
+                Object.entries(data.answers ?? {}).map(([qid, score]) => [Number(qid), Number(score)])
             );
-            const cycleStart = status.cycle?.start_date;
-            const day = cycleStart
-                ? Math.round((new Date(ymd) - new Date(cycleStart)) / 86400000) + 1
-                : 1;
-            openAssess(ymd, day, day >= (status.finish_from_day ?? 6), prefilled, true);
+            const day = data.day ?? 1;
+            // "Tandai selesai" hanya masuk akal kalau tanggal ini masih bagian
+            // siklus yang SEDANG berjalan sekarang, bukan siklus lama yang diedit.
+            const belongsToActiveCycle = isMenstruating && data.cycle_id === status.cycle?.id;
+            const canFinish = belongsToActiveCycle && day >= (status.finish_from_day ?? 6);
+            openAssess(ymd, day, canFinish, prefilled, true);
         } catch (err) {
             setError(err.response?.data?.message ?? 'Gagal memuat jawaban.');
         } finally {
@@ -136,16 +139,21 @@ export default function KalenderTracker() {
         if (!day) return;
         const ymd = toYmd(year, month, day);
 
+        // Tanggal yang sudah pernah diisi selalu bisa dibuka lagi untuk
+        // dikoreksi, terlepas dari status siklusnya sekarang.
+        if (assessedSet.has(ymd)) {
+            openAssessForEdit(ymd);
+            return;
+        }
+
         if (isMenstruating) {
             if (pendingMap.has(ymd)) {
                 const d = pendingMap.get(ymd);
                 openAssess(ymd, d, d >= (status.finish_from_day ?? 6));
-            } else if (assessedSet.has(ymd)) {
-                openAssessForEdit(ymd);
             }
             return;
         }
-        // Belum menstruasi -> tawarkan mulai.
+        // Belum menstruasi & tanggal ini belum pernah diisi -> tawarkan mulai.
         setModal({ mode: 'start', date: ymd });
     };
 
