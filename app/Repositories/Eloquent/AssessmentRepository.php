@@ -57,7 +57,7 @@ class AssessmentRepository implements AssessmentRepositoryInterface
     {
         return AssessmentAttempt::where('user_id', $userId)
             ->whereDate('assessment_date', $date)
-            ->with('answers')
+            ->with(['answers', 'cycle'])
             ->first();
     }
 

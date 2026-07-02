@@ -82,8 +82,11 @@ class AssessmentService
     /**
      * Simpan assessment HARIAN untuk satu tanggal menstruasi. Jika tanggal ini
      * sudah pernah diisi sebelumnya, jawabannya DIPERBARUI (antisipasi salah
-     * klik) alih-alih ditolak. Bila $finished true, siklus ditutup pada
-     * tanggal tersebut.
+     * klik) alih-alih ditolak — koreksi ini TIDAK butuh siklus asalnya masih
+     * berjalan (mis. sudah auto-closed setelah 10 hari), tetap boleh diedit.
+     * Submission BARU tetap wajib berada dalam siklus yang sedang berjalan.
+     * Bila $finished true DAN tanggal ini masih bagian siklus yang sedang
+     * berjalan, siklus ditutup pada tanggal tersebut.
      *
      * @param  array<int,int>  $answers  Pemetaan [question_id => score]
      * @return array<string,mixed>
@@ -92,16 +95,21 @@ class AssessmentService
     {
         $this->validateAnswers($answers);
 
-        $cycle = $this->cycleService->getCurrentCycle($userId);
-        if ($cycle === null || $cycle->status !== 'ongoing') {
-            throw AssessmentException::noActiveCycle();
-        }
-
-        // Tanggal harus dalam rentang siklus berjalan (start s/d hari ini).
-        $start = $cycle->start_date->copy()->startOfDay();
         $target = Carbon::parse($date)->startOfDay();
-        if ($target->lt($start) || $target->gt(Carbon::today())) {
-            throw AssessmentException::invalidDate();
+        $existing = $this->assessmentRepository->attemptForDate($userId, $target->toDateString());
+        $cycle = $this->cycleService->getCurrentCycle($userId);
+        $cycleIsOngoingForTarget = $cycle !== null && $cycle->status === 'ongoing';
+
+        if ($existing === null) {
+            // Submission baru: wajib ada siklus berjalan & tanggal dalam rentangnya.
+            if (! $cycleIsOngoingForTarget) {
+                throw AssessmentException::noActiveCycle();
+            }
+
+            $start = $cycle->start_date->copy()->startOfDay();
+            if ($target->lt($start) || $target->gt(Carbon::today())) {
+                throw AssessmentException::invalidDate();
+            }
         }
 
         $rows = [];
@@ -111,20 +119,21 @@ class AssessmentService
 
         $attemptData = [
             'user_id'         => $userId,
-            'cycle_id'        => $cycle->id,
+            // Koreksi: pertahankan cycle_id aslinya. Baru: pakai siklus berjalan.
+            'cycle_id'        => $existing?->cycle_id ?? $cycle->id,
             'assessment_date' => $target->toDateString(),
             'total_score'     => array_sum($answers),
             'submitted_at'    => Carbon::now(),
         ];
 
-        $existing = $this->assessmentRepository->attemptForDate($userId, $target->toDateString());
         $attempt = $existing !== null
             ? $this->assessmentRepository->updateAttemptWithAnswers($existing, $attemptData, $rows)
             : $this->assessmentRepository->createAttemptWithAnswers($attemptData, $rows);
 
-        // Pilihan "selesai" -> tutup siklus pada tanggal ini.
+        // Pilihan "selesai" -> tutup siklus, hanya jika tanggal ini memang
+        // bagian dari siklus yang SEDANG berjalan (bukan koreksi siklus lama).
         $closed = false;
-        if ($finished) {
+        if ($finished && $cycleIsOngoingForTarget && $attemptData['cycle_id'] === $cycle->id) {
             $this->cycleService->finishCycle($userId, $target->toDateString());
             $closed = true;
         }
@@ -153,7 +162,21 @@ class AssessmentService
             $answers[$answer->question_id] = $answer->score;
         }
 
-        return ['date' => $target->toDateString(), 'answers' => $answers];
+        // Hari ke-berapa dalam siklus aslinya (dipakai frontend untuk label &
+        // menentukan opsi "selesai"), dihitung dari cycle_id tersimpan di
+        // attempt itu sendiri — bukan siklus yang sedang berjalan sekarang.
+        $day = null;
+        $cycleId = $attempt?->cycle_id;
+        if ($attempt?->cycle?->start_date) {
+            $day = $attempt->cycle->start_date->copy()->startOfDay()->diffInDays($target) + 1;
+        }
+
+        return [
+            'date'     => $target->toDateString(),
+            'answers'  => $answers,
+            'day'      => $day,
+            'cycle_id' => $cycleId,
+        ];
     }
 
     /**
