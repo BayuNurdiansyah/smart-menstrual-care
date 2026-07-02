@@ -2,27 +2,27 @@ import React, { useState } from 'react';
 
 /**
  * Slide tutorial garis besar untuk pengguna baru. Gambar diambil dari
- * public/img/tutorial/*.png — belum tersedia sampai admin mengunggahnya;
+ * public/img/tutorial/*.jpg — belum tersedia sampai admin mengunggahnya;
  * selama itu tampil placeholder ikon (lihat `broken` di bawah).
  */
 const SLIDES = [
     {
-        image: '/img/tutorial/1-kalender.png',
+        image: '/img/tutorial/1-kalender.jpg',
         title: 'Tandai Hari Pertama Menstruasi',
         caption: 'Buka menu Kalender, lalu ketuk tanggal hari ini untuk menandai mulai menstruasi.',
     },
     {
-        image: '/img/tutorial/2-assessment.png',
+        image: '/img/tutorial/2-assessment.jpg',
         title: 'Isi Assessment Harian',
         caption: 'Setiap hari menstruasi, jawab beberapa pertanyaan singkat tentang cara kamu merawat diri hari itu.',
     },
     {
-        image: '/img/tutorial/3-modul.png',
+        image: '/img/tutorial/3-modul.jpg',
         title: 'Belajar & Kumpulkan Badge',
         caption: 'Pelajari materi tahap demi tahap, lalu kumpulkan badge setiap kali satu tahap selesai.',
     },
     {
-        image: '/img/tutorial/4-grafik.png',
+        image: '/img/tutorial/4-grafik.jpg',
         title: 'Pantau Grafik Kemandirian',
         caption: 'Lihat perkembangan kemandirianmu merawat diri dari waktu ke waktu lewat grafik.',
     },
