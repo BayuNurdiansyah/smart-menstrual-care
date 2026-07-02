@@ -80,8 +80,10 @@ class AssessmentService
     }
 
     /**
-     * Simpan assessment HARIAN untuk satu tanggal menstruasi.
-     * Bila $finished true, siklus ditutup pada tanggal tersebut.
+     * Simpan assessment HARIAN untuk satu tanggal menstruasi. Jika tanggal ini
+     * sudah pernah diisi sebelumnya, jawabannya DIPERBARUI (antisipasi salah
+     * klik) alih-alih ditolak. Bila $finished true, siklus ditutup pada
+     * tanggal tersebut.
      *
      * @param  array<int,int>  $answers  Pemetaan [question_id => score]
      * @return array<string,mixed>
@@ -102,25 +104,23 @@ class AssessmentService
             throw AssessmentException::invalidDate();
         }
 
-        if ($this->assessmentRepository->attemptForDate($userId, $target->toDateString()) !== null) {
-            throw AssessmentException::alreadySubmitted($target->toDateString());
-        }
-
         $rows = [];
         foreach ($answers as $questionId => $score) {
             $rows[] = ['question_id' => $questionId, 'score' => $score];
         }
 
-        $attempt = $this->assessmentRepository->createAttemptWithAnswers(
-            [
-                'user_id'         => $userId,
-                'cycle_id'        => $cycle->id,
-                'assessment_date' => $target->toDateString(),
-                'total_score'     => array_sum($answers),
-                'submitted_at'    => Carbon::now(),
-            ],
-            $rows
-        );
+        $attemptData = [
+            'user_id'         => $userId,
+            'cycle_id'        => $cycle->id,
+            'assessment_date' => $target->toDateString(),
+            'total_score'     => array_sum($answers),
+            'submitted_at'    => Carbon::now(),
+        ];
+
+        $existing = $this->assessmentRepository->attemptForDate($userId, $target->toDateString());
+        $attempt = $existing !== null
+            ? $this->assessmentRepository->updateAttemptWithAnswers($existing, $attemptData, $rows)
+            : $this->assessmentRepository->createAttemptWithAnswers($attemptData, $rows);
 
         // Pilihan "selesai" -> tutup siklus pada tanggal ini.
         $closed = false;
@@ -135,6 +135,34 @@ class AssessmentService
             'total_score' => $attempt->total_score,
             'cycle_closed' => $closed,
         ];
+    }
+
+    /**
+     * Jawaban yang sudah tersimpan pada tanggal tertentu (untuk prefill form
+     * saat murid membuka kembali tanggal yang sudah diisi untuk dikoreksi).
+     *
+     * @return array<string,mixed>
+     */
+    public function getAnswersForDate(int $userId, string $date): array
+    {
+        $target = Carbon::parse($date)->startOfDay();
+        $attempt = $this->assessmentRepository->attemptWithAnswersForDate($userId, $target->toDateString());
+
+        $answers = [];
+        foreach ($attempt?->answers ?? [] as $answer) {
+            $answers[$answer->question_id] = $answer->score;
+        }
+
+        return ['date' => $target->toDateString(), 'answers' => $answers];
+    }
+
+    /**
+     * Seluruh tanggal (Y-m-d) yang sudah diisi assessment oleh murid, lintas
+     * siklus (dipakai kalender untuk menandai hari yang benar-benar terisi).
+     */
+    public function getAssessedDates(int $userId): array
+    {
+        return $this->assessmentRepository->allAssessedDatesForUser($userId);
     }
 
     /** Validasi: semua pertanyaan aktif terjawab & skor dalam rentang (0-2). */

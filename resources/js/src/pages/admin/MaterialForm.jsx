@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MobileLayout from '../../components/MobileLayout';
-import { createMaterial, getMaterial, updateMaterial, uploadImage } from '../../api/material';
+import { createMaterial, getMaterial, updateMaterial, uploadImage, uploadAudio } from '../../api/material';
 import { STAGES } from '../../utils/stages';
 
 const inputClass =
@@ -22,10 +22,12 @@ export default function MaterialForm() {
     });
     const [steps, setSteps] = useState([]); // [{ text, image_path, image_url }]
     const [images, setImages] = useState([]); // [{ image_path, image_url, caption }]
+    const [audio, setAudio] = useState({ path: '', url: '' }); // narasi materi (opsional)
     const [errors, setErrors] = useState({});
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(isEdit);
     const [saving, setSaving] = useState(false);
+    const [uploadingAudio, setUploadingAudio] = useState(false);
 
     useEffect(() => {
         if (!isEdit) return;
@@ -42,6 +44,7 @@ export default function MaterialForm() {
                 });
                 setSteps((m.steps ?? []).map((s) => ({ text: s.text ?? '', image_path: s.image_path ?? '', image_url: s.image_url ?? '' })));
                 setImages((m.images ?? []).map((img) => ({ image_path: img.image_path ?? '', image_url: img.image_url ?? '', caption: img.caption ?? '' })));
+                setAudio({ path: m.audio_path ?? '', url: m.audio_url ?? '' });
             })
             .catch((err) => setMessage(err.response?.data?.message ?? 'Gagal memuat materi.'))
             .finally(() => setLoading(false));
@@ -80,6 +83,21 @@ export default function MaterialForm() {
     const removeImage = (i) => setImages((g) => g.filter((_, idx) => idx !== i));
     const changeCaption = (i, caption) => setImages((g) => g.map((im, idx) => (idx === i ? { ...im, caption } : im)));
 
+    // ── Audio narasi ─────────────────────────────────────────────────────────
+    const handleAudioFile = async (file) => {
+        if (!file) return;
+        setUploadingAudio(true);
+        try {
+            const res = await uploadAudio(file);
+            setAudio({ path: res.data.path, url: res.data.url });
+        } catch {
+            setMessage('Gagal mengunggah audio.');
+        } finally {
+            setUploadingAudio(false);
+        }
+    };
+    const removeAudio = () => setAudio({ path: '', url: '' });
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setErrors({});
@@ -91,6 +109,7 @@ export default function MaterialForm() {
             title: form.title,
             text_content: form.text_content,
             youtube_url: form.youtube_url,
+            audio_path: audio.path || '',
             order: Number(form.order),
             is_published: form.is_published,
             steps: steps.map((s, i) => ({ text: s.text, image_path: s.image_path || null, order: i + 1 })),
@@ -147,6 +166,27 @@ export default function MaterialForm() {
                 <div>
                     <label htmlFor="youtube_url" className="mb-1 block text-sm font-semibold text-gray-700">URL YouTube <span className="font-normal text-gray-400">(opsional)</span></label>
                     <input id="youtube_url" name="youtube_url" type="text" value={form.youtube_url} onChange={handleChange} className={inputClass} placeholder="https://youtu.be/xxxxxxxxxxx" />
+                </div>
+
+                {/* Audio narasi */}
+                <div className="rounded-xl border border-gray-100 p-3">
+                    <h3 className="mb-2 text-sm font-bold text-gray-700">
+                        Audio Narasi <span className="font-normal text-gray-400">(opsional — jika kosong, dibacakan otomatis oleh suara robot)</span>
+                    </h3>
+                    {audio.url && (
+                        <div className="mb-2 flex items-center gap-2">
+                            <audio controls src={audio.url} className="h-9 flex-1" />
+                            <button type="button" onClick={removeAudio} className="text-xs text-red-600">Hapus</button>
+                        </div>
+                    )}
+                    <input
+                        type="file"
+                        accept="audio/*"
+                        disabled={uploadingAudio}
+                        onChange={(e) => handleAudioFile(e.target.files?.[0])}
+                        className="text-xs"
+                    />
+                    {uploadingAudio && <p className="mt-1 text-xs text-gray-400">Mengunggah...</p>}
                 </div>
 
                 {/* Langkah berilustrasi */}

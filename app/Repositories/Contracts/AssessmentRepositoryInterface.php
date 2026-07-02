@@ -26,11 +26,20 @@ interface AssessmentRepositoryInterface
     /** Attempt pada tanggal tertentu milik murid, jika ada. */
     public function attemptForDate(int $userId, string $date): ?AssessmentAttempt;
 
+    /** Attempt + jawabannya pada tanggal tertentu milik murid, jika ada (untuk edit). */
+    public function attemptWithAnswersForDate(int $userId, string $date): ?AssessmentAttempt;
+
     /** Daftar tanggal (Y-m-d) yang sudah diisi assessment untuk sebuah siklus. */
     public function assessedDatesForCycle(int $cycleId): array;
 
+    /** Daftar SELURUH tanggal (Y-m-d) yang sudah diisi assessment murid (semua siklus). */
+    public function allAssessedDatesForUser(int $userId): array;
+
     /** Buat attempt beserta jawaban-jawabannya dalam satu transaksi. */
     public function createAttemptWithAnswers(array $attemptData, array $answers): AssessmentAttempt;
+
+    /** Perbarui attempt yang sudah ada beserta jawaban-jawabannya (ganti total). */
+    public function updateAttemptWithAnswers(AssessmentAttempt $attempt, array $attemptData, array $answers): AssessmentAttempt;
 
     /** Riwayat attempt murid untuk grafik tren (Recharts). */
     public function historyForUser(User $user): Collection;

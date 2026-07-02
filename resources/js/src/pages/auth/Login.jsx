@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import MobileLayout from '../../components/MobileLayout';
+import TutorialCarousel from '../../components/TutorialCarousel';
 import { loginRequest } from '../../api/auth';
 import { useAuth } from '../../context/AuthContext';
 import { roleHome } from '../../utils/roles';
@@ -101,6 +102,8 @@ export default function Login() {
                     <Link to="/register" className="font-semibold text-primary hover:underline">Daftar</Link>
                 </p>
             </form>
+
+            <TutorialCarousel />
         </MobileLayout>
     );
 }

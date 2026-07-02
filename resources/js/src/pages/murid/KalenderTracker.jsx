@@ -8,6 +8,8 @@ import {
     getCycleHistory,
     startCycle,
     getDailyStatus,
+    getAssessedDates,
+    getAssessmentAnswers,
     getAssessmentQuestions,
     getAssessmentChart,
     submitDailyAssessment,
@@ -24,19 +26,6 @@ const OPTIONS = [
 const pad = (n) => String(n).padStart(2, '0');
 const toYmd = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const todayYmd = () => { const t = new Date(); return toYmd(t.getFullYear(), t.getMonth(), t.getDate()); };
-
-function buildMensSet(cycles) {
-    const set = new Set();
-    cycles.forEach((c) => {
-        if (!c.start_date) return;
-        const start = new Date(c.start_date);
-        const end = c.end_date ? new Date(c.end_date) : new Date();
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            set.add(toYmd(d.getFullYear(), d.getMonth(), d.getDate()));
-        }
-    });
-    return set;
-}
 
 function buildWeeks(year, month) {
     const first = new Date(year, month, 1);
@@ -66,20 +55,21 @@ export default function KalenderTracker() {
     const [current, setCurrent] = useState(null);
     const [history, setHistory] = useState([]);
     const [status, setStatus] = useState({ active: false });
+    const [assessedDates, setAssessedDates] = useState([]);
     const [questions, setQuestions] = useState([]);
     const [chart, setChart] = useState({ trend: [], interpretation: null });
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
 
-    // Modal: { mode:'start', date } | { mode:'assess', date, day, canFinish }
+    // Modal: { mode:'start', date } | { mode:'assess', date, day, canFinish, editing }
     const [modal, setModal] = useState(null);
     const [answers, setAnswers] = useState({});
     const [finished, setFinished] = useState(false);
 
     const isMenstruating = status.active;
-    const mensSet = useMemo(() => buildMensSet(history), [history]);
-    const assessedSet = useMemo(() => new Set(status.assessed_dates ?? []), [status]);
+    // Tanggal yang sudah benar-benar terisi (lintas siklus) -> satu-satu, bukan blok rentang.
+    const assessedSet = useMemo(() => new Set(assessedDates), [assessedDates]);
     const pendingMap = useMemo(() => {
         const m = new Map();
         (status.pending_dates ?? []).forEach((p) => m.set(p.date, p.day));
@@ -91,16 +81,20 @@ export default function KalenderTracker() {
         setLoading(true);
         setError('');
         try {
-            const [cur, hist, st, q, ch] = await Promise.all([
-                getCurrentCycle(), getCycleHistory(), getDailyStatus(), getAssessmentQuestions(), getAssessmentChart(),
+            const [cur, hist, st, ad, q, ch] = await Promise.all([
+                getCurrentCycle(), getCycleHistory(), getDailyStatus(), getAssessedDates(), getAssessmentQuestions(), getAssessmentChart(),
             ]);
+            const statusData = st.data.data ?? { active: false };
             setCurrent(cur.data.data ?? null);
             setHistory(hist.data.data ?? []);
-            setStatus(st.data.data ?? { active: false });
+            setStatus(statusData);
+            setAssessedDates(ad.data.data ?? []);
             setQuestions(q.data.data ?? []);
             setChart(ch.data.data ?? { trend: [], interpretation: null });
+            return statusData;
         } catch (err) {
             setError(err.response?.data?.message ?? 'Gagal memuat data.');
+            return null;
         } finally {
             setLoading(false);
         }
@@ -111,10 +105,31 @@ export default function KalenderTracker() {
     const prevMonth = () => { if (month === 0) { setMonth(11); setYear((y) => y - 1); } else setMonth((m) => m - 1); };
     const nextMonth = () => { if (month === 11) { setMonth(0); setYear((y) => y + 1); } else setMonth((m) => m + 1); };
 
-    const openAssess = (ymd, day, canFinish) => {
-        setAnswers({});
+    const openAssess = (ymd, day, canFinish, initialAnswers = {}, editing = false) => {
+        setAnswers(initialAnswers);
         setFinished(false);
-        setModal({ mode: 'assess', date: ymd, day, canFinish });
+        setModal({ mode: 'assess', date: ymd, day, canFinish, editing });
+    };
+
+    // Buka kembali tanggal yang sudah diisi, untuk dikoreksi (antisipasi salah klik).
+    const openAssessForEdit = async (ymd) => {
+        setBusy(true); setError('');
+        try {
+            const res = await getAssessmentAnswers(ymd);
+            const existing = res.data.data?.answers ?? {};
+            const prefilled = Object.fromEntries(
+                Object.entries(existing).map(([qid, score]) => [Number(qid), Number(score)])
+            );
+            const cycleStart = status.cycle?.start_date;
+            const day = cycleStart
+                ? Math.round((new Date(ymd) - new Date(cycleStart)) / 86400000) + 1
+                : 1;
+            openAssess(ymd, day, day >= (status.finish_from_day ?? 6), prefilled, true);
+        } catch (err) {
+            setError(err.response?.data?.message ?? 'Gagal memuat jawaban.');
+        } finally {
+            setBusy(false);
+        }
     };
 
     const onClickDate = (day) => {
@@ -126,7 +141,7 @@ export default function KalenderTracker() {
                 const d = pendingMap.get(ymd);
                 openAssess(ymd, d, d >= (status.finish_from_day ?? 6));
             } else if (assessedSet.has(ymd)) {
-                setError('Assessment untuk tanggal ini sudah diisi.');
+                openAssessForEdit(ymd);
             }
             return;
         }
@@ -137,9 +152,19 @@ export default function KalenderTracker() {
     const confirmStart = async () => {
         setBusy(true); setError('');
         try {
-            await startCycle({ start_date: modal.date });
-            setModal(null);
-            await load();
+            const startDate = modal.date;
+            await startCycle({ start_date: startDate });
+            const freshStatus = await load();
+            // Hari pertama: langsung buka popup assessment untuk tanggal yang
+            // baru saja ditandai, tanpa perlu klik ulang tanggalnya.
+            if (freshStatus) {
+                const pending = (freshStatus.pending_dates ?? []).find((p) => p.date === startDate);
+                const day = pending?.day ?? 1;
+                const canFinish = day >= (freshStatus.finish_from_day ?? 6);
+                openAssess(startDate, day, canFinish);
+            } else {
+                setModal(null);
+            }
         } catch (err) {
             setError(err.response?.data?.message ?? 'Gagal memulai.');
         } finally { setBusy(false); }
@@ -205,7 +230,8 @@ export default function KalenderTracker() {
                                     {week.map((day, di) => {
                                         if (!day) return <div key={di} className="h-10" />;
                                         const ymd = toYmd(year, month, day);
-                                        const mens = mensSet.has(ymd);
+                                        // Pink hanya untuk tanggal yang BENAR-BENAR sudah diisi (satu per satu),
+                                        // bukan seluruh rentang siklus sekaligus.
                                         const assessed = assessedSet.has(ymd);
                                         const pending = pendingMap.has(ymd);
                                         const isToday = ymd === todayYmd();
@@ -215,12 +241,12 @@ export default function KalenderTracker() {
                                                 type="button"
                                                 onClick={() => onClickDate(day)}
                                                 className={`relative m-0.5 flex h-9 flex-col items-center justify-center rounded-lg text-sm transition ${
-                                                    mens ? 'bg-primary text-white font-bold' : 'text-gray-700 hover:bg-primary-50'
-                                                } ${pending ? 'ring-2 ring-amber-400' : ''} ${isToday && !mens ? 'ring-2 ring-primary-300' : ''}`}
+                                                    assessed ? 'bg-primary text-white font-bold' : 'text-gray-700 hover:bg-primary-50'
+                                                } ${pending ? 'ring-2 ring-amber-400' : ''} ${isToday && !assessed ? 'ring-2 ring-primary-300' : ''}`}
                                             >
                                                 {day}
-                                                {mens && (
-                                                    <i className={`fa-solid ${assessed ? 'fa-check' : 'fa-droplet'} absolute -bottom-0.5 text-[8px]`} aria-hidden="true" />
+                                                {assessed && (
+                                                    <i className="fa-solid fa-check absolute -bottom-0.5 text-[8px]" aria-hidden="true" />
                                                 )}
                                             </button>
                                         );
@@ -231,8 +257,7 @@ export default function KalenderTracker() {
 
                         {/* Legenda */}
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
-                            <span className="flex items-center gap-1"><span className="flex h-4 w-4 items-center justify-center rounded bg-primary text-white"><i className="fa-solid fa-droplet text-[8px]" /></span> Hari menstruasi</span>
-                            <span className="flex items-center gap-1"><span className="flex h-4 w-4 items-center justify-center rounded bg-primary text-white"><i className="fa-solid fa-check text-[8px]" /></span> Sudah isi assessment</span>
+                            <span className="flex items-center gap-1"><span className="flex h-4 w-4 items-center justify-center rounded bg-primary text-white"><i className="fa-solid fa-check text-[8px]" /></span> Sudah diisi (ketuk lagi untuk koreksi)</span>
                             <span className="flex items-center gap-1"><span className="h-4 w-4 rounded ring-2 ring-amber-400" /> Perlu diisi</span>
                         </div>
 
@@ -288,12 +313,15 @@ export default function KalenderTracker() {
                             <h3 className="text-lg font-bold text-gray-800">Assessment Hari ke-{modal.day}</h3>
                             <button type="button" onClick={() => setModal(null)} className="text-gray-400" aria-label="Tutup"><i className="fa-solid fa-xmark" /></button>
                         </div>
-                        <p className="mb-3 text-xs text-gray-500">{modal.date} — isi sesuai kemampuanmu hari ini.</p>
+                        <p className="mb-3 text-xs text-gray-500">
+                            {modal.date} — {modal.editing ? 'sedang mengoreksi jawaban yang sudah tersimpan.' : 'isi sesuai kemampuanmu hari ini.'}
+                        </p>
 
-                        {/* Text-to-Speech: bacakan seluruh pertanyaan & pilihan */}
+                        {/* Narasi suara asli (/public/audio/assessment/pertanyaan-harian.mp3); jatuh ke TTS jika belum ada. */}
                         <div className="mb-4">
                             <SpeakButton
                                 label="Dengarkan pertanyaan"
+                                audioSrc="/audio/assessment/pertanyaan-harian.mp3"
                                 text={
                                     `Assessment hari ke ${modal.day}. Pilihan jawaban: ${OPTIONS.map((o) => o.label).join(', ')}. ` +
                                     questions.map((q, i) => `Pertanyaan ${i + 1}. ${q.question_text}.`).join(' ')
@@ -326,7 +354,7 @@ export default function KalenderTracker() {
                         )}
 
                         <button type="button" onClick={submitAssess} disabled={!allAnswered || busy} className="btn-primary mt-5 w-full">
-                            {busy ? 'Menyimpan...' : finished ? 'Simpan & Akhiri Menstruasi' : 'Simpan Assessment'}
+                            {busy ? 'Menyimpan...' : finished ? 'Simpan & Akhiri Menstruasi' : modal.editing ? 'Simpan Perubahan' : 'Simpan Assessment'}
                         </button>
                     </div>
                 </div>

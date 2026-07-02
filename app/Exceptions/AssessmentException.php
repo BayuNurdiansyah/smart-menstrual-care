@@ -4,14 +4,6 @@ namespace App\Exceptions;
 
 class AssessmentException extends DomainException
 {
-    public static function alreadySubmitted(string $date): self
-    {
-        $e = new self("Assessment untuk tanggal {$date} sudah diisi.");
-        $e->status = 409; // Conflict
-
-        return $e;
-    }
-
     public static function invalidAnswers(): self
     {
         return new self('Jawaban tidak lengkap atau di luar rentang yang diizinkan.');

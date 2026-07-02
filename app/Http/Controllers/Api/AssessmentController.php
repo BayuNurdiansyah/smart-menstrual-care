@@ -30,7 +30,25 @@ class AssessmentController extends Controller
         ]);
     }
 
-    /** Simpan assessment harian; bila finished=true, siklus ditutup pada tanggal itu. */
+    /** Seluruh tanggal yang sudah diisi assessment (lintas siklus) -> pewarnaan kalender. */
+    public function assessedDates(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->assessmentService->getAssessedDates($request->user()->id),
+        ]);
+    }
+
+    /** Jawaban tersimpan pada satu tanggal (untuk prefill saat mengedit isian). */
+    public function answers(Request $request): JsonResponse
+    {
+        $data = $request->validate(['date' => ['required', 'date']]);
+
+        return response()->json([
+            'data' => $this->assessmentService->getAnswersForDate($request->user()->id, $data['date']),
+        ]);
+    }
+
+    /** Simpan assessment harian; jika tanggal sudah pernah diisi, jawabannya diperbarui. Bila finished=true, siklus ditutup pada tanggal itu. */
     public function store(StoreAssessmentRequest $request): JsonResponse
     {
         $result = $this->assessmentService->submitDailyAssessment(

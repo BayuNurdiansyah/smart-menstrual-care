@@ -16,7 +16,14 @@ export const getAssessmentQuestions = () => api.get('/assessments/questions');
 // Status harian: tanggal sudah/belum diisi untuk siklus berjalan.
 export const getDailyStatus = () => api.get('/assessments/daily-status');
 
+// Seluruh tanggal yang sudah diisi assessment (lintas siklus) -> pewarnaan kalender.
+export const getAssessedDates = () => api.get('/assessments/assessed-dates');
+
+// Jawaban tersimpan pada satu tanggal (untuk prefill saat mengedit isian).
+export const getAssessmentAnswers = (date) => api.get('/assessments/answers', { params: { date } });
+
 // Simpan assessment satu hari. payload: { date, answers, finished }
+// Jika tanggal sudah pernah diisi, jawabannya diperbarui (bukan ditolak).
 export const submitDailyAssessment = (payload) => api.post('/assessments', payload);
 
 export const getAssessmentChart = () => api.get('/assessments/chart');

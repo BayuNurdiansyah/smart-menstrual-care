@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Material extends Model
 {
@@ -14,6 +15,7 @@ class Material extends Model
         'title',
         'text_content',
         'youtube_video_id',
+        'audio_path',
         'order',
         'is_published',
     ];
@@ -26,8 +28,8 @@ class Material extends Model
         ];
     }
 
-    // Tambahkan URL embed siap pakai ke output JSON.
-    protected $appends = ['youtube_embed_url'];
+    // Tambahkan URL embed & audio siap pakai ke output JSON.
+    protected $appends = ['youtube_embed_url', 'audio_url'];
 
     public function stage(): BelongsTo
     {
@@ -68,6 +70,17 @@ class Material extends Model
             get: fn (): ?string => $this->youtube_video_id
                 ? 'https://www.youtube.com/embed/' . $this->youtube_video_id
                 : null,
+        );
+    }
+
+    /**
+     * ACCESSOR: URL siap pakai (disk "public") untuk rekaman narasi materi,
+     * atau null bila admin belum mengunggah audio (frontend jatuh ke TTS).
+     */
+    protected function audioUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): ?string => $this->audio_path ? Storage::url($this->audio_path) : null,
         );
     }
 

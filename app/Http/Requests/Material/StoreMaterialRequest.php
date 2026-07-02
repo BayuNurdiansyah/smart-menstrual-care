@@ -22,6 +22,8 @@ class StoreMaterialRequest extends FormRequest
             'text_content' => ['nullable', 'string'],
             // URL YouTube format apa pun; ID diekstrak oleh mutator Model.
             'youtube_url'  => ['nullable', 'string', 'max:255'],
+            // Path hasil endpoint /admin/uploads-audio; string kosong = hapus audio.
+            'audio_path'   => ['nullable', 'string', 'max:255'],
             'order'        => ['nullable', 'integer', 'min:1'],
             'is_published' => ['nullable', 'boolean'],
 
