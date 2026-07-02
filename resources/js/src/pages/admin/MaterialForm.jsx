@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MobileLayout from '../../components/MobileLayout';
-import { createMaterial, getMaterial, updateMaterial, uploadImage, uploadAudio } from '../../api/material';
+import { createMaterial, getMaterial, updateMaterial, uploadImage, uploadAudio, deleteAudio } from '../../api/material';
 import { STAGES } from '../../utils/stages';
 
 const inputClass =
@@ -96,7 +96,15 @@ export default function MaterialForm() {
             setUploadingAudio(false);
         }
     };
-    const removeAudio = () => setAudio({ path: '', url: '' });
+    const removeAudio = async () => {
+        if (!audio.path) return;
+        try {
+            await deleteAudio(audio.path);
+        } catch {
+            // file mungkin sudah tidak ada di storage, tetap bersihkan state
+        }
+        setAudio({ path: '', url: '' });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();

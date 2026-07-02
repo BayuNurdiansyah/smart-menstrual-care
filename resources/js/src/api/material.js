@@ -26,5 +26,8 @@ export const uploadAudio = (file) => {
     return api.post('/admin/uploads-audio', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
 
+// Hapus audio narasi dari storage
+export const deleteAudio = (path) => api.delete('/admin/uploads-audio', { data: { path } });
+
 // ── Murid (read-only per tahap) ─────────────────────────────────────────────
 export const getStageMaterials = (stageId) => api.get(`/stages/${stageId}/materials`);
