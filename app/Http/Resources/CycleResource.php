@@ -18,6 +18,7 @@ class CycleResource extends JsonResource
             'status'        => $this->status,
             'auto_closed'   => (bool) $this->auto_closed,
             'notes'         => $this->notes,
+            'created_at'    => $this->created_at?->toDateString(),
         ];
     }
 }

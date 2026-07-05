@@ -380,7 +380,10 @@ export default function KalenderTracker() {
                     <>
                         {/* Banner status aktif */}
                         {isMenstruating && (() => {
-                            const overdue = activeCycleDay > 10;
+                            // Peringatan overdue hanya muncul jika siklus BUKAN baru dibuat hari ini.
+                            // Kalau baru dibuat hari ini tapi start_date bulan lalu = sedang input historis.
+                            const createdToday = current?.created_at === todayYmd();
+                            const overdue = activeCycleDay > 10 && !createdToday;
                             return (
                                 <div className={`rounded-2xl px-4 py-3 text-sm space-y-2 ${overdue ? 'bg-amber-50 border border-amber-200 text-amber-900' : 'bg-primary-50 text-primary-800'}`}>
                                     {overdue && (
