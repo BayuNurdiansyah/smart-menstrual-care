@@ -109,10 +109,15 @@ class MaterialService
                 'title'            => $data['title'] ?? null,
                 'text_content'     => $data['text_content'] ?? null,
                 'youtube_video_id' => $data['youtube_url'] ?? $data['youtube_video_id'] ?? null,
-                'audio_path'       => $data['audio_path'] ?? null,
                 'order'            => $newOrder,
                 'is_published'     => $data['is_published'] ?? null,
             ], static fn ($value) => $value !== null);
+
+            // audio_path harus di-handle di luar array_filter karena nilai NULL
+            // yang disengaja (admin hapus audio) harus tetap masuk ke payload.
+            if (array_key_exists('audio_path', $data)) {
+                $payload['audio_path'] = blank($data['audio_path']) ? null : $data['audio_path'];
+            }
 
             $material = $this->materialRepository->update($material, $payload);
 

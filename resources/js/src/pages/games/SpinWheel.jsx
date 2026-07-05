@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getWheelQuestions } from '../../api/game';
 import useStageComplete from '../../hooks/useStageComplete';
 import BadgeModal from '../../components/BadgeModal';
+import SpeakButton from '../../components/SpeakButton';
 
 const OPTS = ['a', 'b', 'c'];
 
@@ -10,8 +11,8 @@ export default function SpinWheel({ stageId }) {
     const [loading, setLoading] = useState(true);
     const [rotation, setRotation] = useState(0);
     const [spinning, setSpinning] = useState(false);
-    const [selected, setSelected] = useState(null); // soal terpilih
-    const [chosen, setChosen] = useState(null); // 'a'|'b'|'c'
+    const [selected, setSelected] = useState(null);
+    const [chosen, setChosen] = useState(null);
     const spinTimer = useRef(null);
 
     const { complete, badge, clearBadge } = useStageComplete(stageId);
@@ -24,7 +25,6 @@ export default function SpinWheel({ stageId }) {
         return () => clearTimeout(spinTimer.current);
     }, [stageId]);
 
-    // Latar roda: segmen warna selang-seling (dekoratif).
     const wheelBg = useMemo(() => {
         const n = Math.max(questions.length, 6);
         const slice = 360 / n;
@@ -43,7 +43,7 @@ export default function SpinWheel({ stageId }) {
         setSpinning(true);
 
         const pick = Math.floor(Math.random() * questions.length);
-        const turns = 4 + Math.floor(Math.random() * 3); // 4-6 putaran penuh
+        const turns = 4 + Math.floor(Math.random() * 3);
         setRotation((r) => r + turns * 360 + Math.floor(Math.random() * 360));
 
         spinTimer.current = setTimeout(() => {
@@ -68,6 +68,11 @@ export default function SpinWheel({ stageId }) {
         );
     }
 
+    // Teks TTS fallback: baca soal + pilihan jawaban
+    const questionText = selected
+        ? `${selected.question} Pilihan: A, ${selected.options?.a ?? selected.option_a}. B, ${selected.options?.b ?? selected.option_b}. C, ${selected.options?.c ?? selected.option_c}.`
+        : '';
+
     return (
         <div className="card-soft">
             <h3 className="mb-1 text-lg font-bold text-gray-800">Roda Keberuntungan</h3>
@@ -77,9 +82,7 @@ export default function SpinWheel({ stageId }) {
 
             {/* Roda */}
             <div className="relative mx-auto mb-4 h-44 w-44">
-                {/* Penunjuk */}
                 <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2">
-                    {/* PLACEHOLDER: <i className="fa-solid fa-caret-down" /> */}
                     <div className="h-0 w-0 border-l-8 border-r-8 border-t-[14px] border-l-transparent border-r-transparent border-t-primary-700" />
                 </div>
                 <div
@@ -108,8 +111,19 @@ export default function SpinWheel({ stageId }) {
             {selected && (
                 <div className="mt-5 rounded-lg border border-primary-100 bg-primary-50 p-4">
                     <p className="font-semibold text-gray-800">{selected.question}</p>
+
+                    {/* Tombol putar audio soal */}
+                    <div className="mt-2">
+                        <SpeakButton
+                            label="Dengarkan soal"
+                            audioSrc={selected.audio_url ?? undefined}
+                            text={questionText}
+                        />
+                    </div>
+
                     <div className="mt-3 space-y-2">
                         {OPTS.map((key) => {
+                            const optionText = selected.options ? selected.options[key] : selected[`option_${key}`];
                             const isChosen = chosen === key;
                             const isAnswer = selected.answer === key;
                             let cls = 'border-gray-200 bg-white text-gray-700';
@@ -126,7 +140,7 @@ export default function SpinWheel({ stageId }) {
                                     className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm font-medium ${cls}`}
                                 >
                                     <span className="font-bold uppercase">{key}.</span>
-                                    {selected.options[key]}
+                                    {optionText}
                                 </button>
                             );
                         })}
