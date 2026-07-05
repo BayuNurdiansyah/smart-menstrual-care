@@ -5,14 +5,18 @@ namespace App\Services;
 use App\Exceptions\CycleException;
 use App\Models\Cycle;
 use App\Models\User;
+use App\Repositories\Contracts\AssessmentRepositoryInterface;
 use App\Repositories\Contracts\CycleRepositoryInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class CycleService
 {
     /**
      * Batas maksimal lama satu siklus haid (hari). Lebih dari ini,
-     * siklus dianggap lupa ditutup dan akan di-auto-close.
+     * siklus dianggap lupa ditutup dan akan di-auto-close — TAPI hanya
+     * jika siklus juga sudah ada di DB lebih dari MAX_PERIOD_DAYS hari
+     * (mencegah auto-close saat user baru saja input data historis).
      */
     private const MAX_PERIOD_DAYS = 10;
 
@@ -20,8 +24,9 @@ class CycleService
     private const HEALTHY_HABIT_SLUG = 'healthy-habit-builder';
 
     public function __construct(
-        private readonly CycleRepositoryInterface $cycleRepository,
-        private readonly GameService $gameService,
+        private readonly CycleRepositoryInterface      $cycleRepository,
+        private readonly GameService                   $gameService,
+        private readonly AssessmentRepositoryInterface $assessmentRepository,
     ) {
     }
 
@@ -35,10 +40,12 @@ class CycleService
     }
 
     /**
-     * Ambil siklus berjalan milik murid dengan LAZY EVALUATION:
-     * dievaluasi saat dibaca (bukan Cron). Jika siklus yang masih terbuka
-     * (end_date null) sudah melewati MAX_PERIOD_DAYS sejak start_date,
-     * tutup otomatis pada hari ke-10 lalu kembalikan data ter-update.
+     * Ambil siklus berjalan milik murid dengan LAZY EVALUATION.
+     * Auto-close hanya dipicu jika:
+     *   1. start_date sudah lebih dari MAX_PERIOD_DAYS yang lalu, DAN
+     *   2. created_at siklus juga sudah lebih dari MAX_PERIOD_DAYS yang lalu.
+     * Syarat (2) mencegah siklus yang baru dibuat untuk input data historis
+     * langsung di-close sebelum user sempat mengisi assessment.
      */
     public function getCurrentCycle(int $userId): ?Cycle
     {
@@ -49,12 +56,11 @@ class CycleService
         }
 
         if ($cycle->end_date === null) {
-            $elapsedDays = $cycle->start_date->diffInDays(Carbon::today());
+            $elapsedSinceStart   = $cycle->start_date->diffInDays(Carbon::today());
+            $elapsedSinceCreated = $cycle->created_at->startOfDay()->diffInDays(Carbon::today());
 
-            if ($elapsedDays > self::MAX_PERIOD_DAYS) {
-                // Tutup pada hari ke-10 dari start_date, tandai auto-closed.
+            if ($elapsedSinceStart > self::MAX_PERIOD_DAYS && $elapsedSinceCreated > self::MAX_PERIOD_DAYS) {
                 $autoEndDate = $cycle->start_date->copy()->addDays(self::MAX_PERIOD_DAYS);
-
                 $cycle = $this->cycleRepository->close(
                     $cycle,
                     $autoEndDate->toDateString(),
@@ -138,6 +144,11 @@ class CycleService
      * Edit riwayat siklus secara manual (mis. memperbaiki tanggal/catatan).
      * Hanya pemilik data yang boleh mengubah. Mengisi end_date berarti
      * siklus dianggap selesai (status closed, manual).
+     *
+     * Jika start_date atau end_date berubah, assessment pada tanggal lama
+     * otomatis dipindah ke tanggal baru, dan assessment yang "terlewat"
+     * (antara tanggal lama dan baru jika baru lebih maju) dihapus.
+     * Operasi hanya menyentuh siklus yang bersangkutan.
      */
     public function editHistory(int $userId, int $cycleId, array $data): Cycle
     {
@@ -162,19 +173,115 @@ class CycleService
             }
         }
 
-        // Penutupan manual: end_date diisi -> status closed, bukan auto.
+        // Simpan tanggal lama sebelum diubah (untuk migrasi assessment).
+        $oldStartDate = $cycle->start_date->toDateString();
+        $oldEndDate   = $cycle->end_date?->toDateString();
+
         $isClosing = ! empty($payload['end_date']);
         if ($isClosing) {
-            $payload['status'] = 'closed';
+            $payload['status']      = 'closed';
             $payload['auto_closed'] = false;
         }
 
-        $updated = $this->cycleRepository->update($cycle, $payload);
+        return DB::transaction(function () use ($cycle, $payload, $oldStartDate, $oldEndDate, $isClosing, $userId) {
+            $updated = $this->cycleRepository->update($cycle, $payload);
 
-        if ($isClosing) {
-            $this->onCycleClosed($userId);
+            // Migrasi assessment jika start_date berubah.
+            $newStartDate = $payload['start_date'] ?? null;
+            if ($newStartDate !== null && $newStartDate !== $oldStartDate) {
+                $this->migrateStartDateAssessments($cycle->id, $userId, $oldStartDate, $newStartDate);
+            }
+
+            // Migrasi assessment jika end_date berubah dan sebelumnya ada end_date.
+            $newEndDate = $payload['end_date'] ?? null;
+            if ($newEndDate !== null && $oldEndDate !== null && $newEndDate !== $oldEndDate) {
+                $this->migrateEndDateAssessments($cycle->id, $userId, $oldEndDate, $newEndDate);
+            }
+
+            if ($isClosing) {
+                $this->onCycleClosed($userId);
+            }
+
+            return $updated;
+        });
+    }
+
+    /**
+     * Migrasi assessment ketika start_date siklus dikoreksi.
+     *
+     * Aturan:
+     * - Assessment di tanggal mulai lama dipindah ke tanggal mulai baru (menjadi day 1).
+     * - Jika tanggal baru LEBIH MAJU dari tanggal lama, assessment yang berada di antara
+     *   keduanya (exclusive) dihapus karena sudah "sebelum tanggal mulai" yang baru.
+     * - Semua operasi hanya menyentuh cycle_id yang bersangkutan.
+     * - Jika tanggal tujuan terisi oleh siklus LAIN (unique constraint), assessment
+     *   lama dihapus saja tanpa dipindah agar tidak menyentuh data siklus lain.
+     */
+    private function migrateStartDateAssessments(int $cycleId, int $userId, string $oldStart, string $newStart): void
+    {
+        $oldAttempt = $this->assessmentRepository->attemptForDateInCycle($cycleId, $oldStart);
+
+        if ($oldAttempt !== null) {
+            // Cek konflik di level user (unique index user_id, assessment_date).
+            $conflicting = $this->assessmentRepository->attemptForDate($userId, $newStart);
+
+            if ($conflicting !== null && $conflicting->id !== $oldAttempt->id) {
+                if ($conflicting->cycle_id === $cycleId) {
+                    // Konflik dari siklus yang sama → hapus, lalu pindahkan.
+                    $this->assessmentRepository->deleteAttempt($conflicting);
+                    $oldAttempt->assessment_date = $newStart;
+                    $oldAttempt->save();
+                } else {
+                    // Konflik dari siklus LAIN → jangan sentuh; hapus saja assessment lama.
+                    $this->assessmentRepository->deleteAttempt($oldAttempt);
+                }
+            } else {
+                $oldAttempt->assessment_date = $newStart;
+                $oldAttempt->save();
+            }
         }
 
-        return $updated;
+        // Jika start baru lebih maju, hapus assessment siklus ini yang kini "sebelum start baru".
+        if ($newStart > $oldStart) {
+            $this->assessmentRepository->deleteAttemptsInRangeForCycle($cycleId, $oldStart, $newStart);
+        }
+    }
+
+    /**
+     * Migrasi assessment ketika end_date siklus dikoreksi.
+     *
+     * Aturan:
+     * - Assessment di tanggal akhir lama dipindah ke tanggal akhir baru.
+     * - Jika tanggal baru LEBIH MAJU dari tanggal lama, assessment yang berada di antara
+     *   keduanya (exclusive) dihapus.
+     * - Jika tanggal baru lebih MUNDUR, assessment lain di siklus tidak disentuh.
+     * - Semua operasi hanya menyentuh cycle_id yang bersangkutan.
+     * - Jika tanggal tujuan terisi oleh siklus LAIN, assessment lama dihapus tanpa dipindah.
+     */
+    private function migrateEndDateAssessments(int $cycleId, int $userId, string $oldEnd, string $newEnd): void
+    {
+        $oldAttempt = $this->assessmentRepository->attemptForDateInCycle($cycleId, $oldEnd);
+
+        if ($oldAttempt !== null) {
+            $conflicting = $this->assessmentRepository->attemptForDate($userId, $newEnd);
+
+            if ($conflicting !== null && $conflicting->id !== $oldAttempt->id) {
+                if ($conflicting->cycle_id === $cycleId) {
+                    $this->assessmentRepository->deleteAttempt($conflicting);
+                    $oldAttempt->assessment_date = $newEnd;
+                    $oldAttempt->save();
+                } else {
+                    $this->assessmentRepository->deleteAttempt($oldAttempt);
+                }
+            } else {
+                $oldAttempt->assessment_date = $newEnd;
+                $oldAttempt->save();
+            }
+        }
+
+        // Jika end baru lebih maju, hapus assessment siklus ini yang berada di antara keduanya.
+        if ($newEnd > $oldEnd) {
+            $this->assessmentRepository->deleteAttemptsInRangeForCycle($cycleId, $oldEnd, $newEnd);
+        }
     }
 }

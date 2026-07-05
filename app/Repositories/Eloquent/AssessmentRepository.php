@@ -2,6 +2,7 @@
 
 namespace App\Repositories\Eloquent;
 
+use App\Models\AssessmentAnswer;
 use App\Models\AssessmentAttempt;
 use App\Models\AssessmentQuestion;
 use App\Models\User;
@@ -129,6 +130,28 @@ class AssessmentRepository implements AssessmentRepositoryInterface
             $attempt->answers()->delete();
             $attempt->delete();
         });
+    }
+
+    public function attemptForDateInCycle(int $cycleId, string $date): ?AssessmentAttempt
+    {
+        return AssessmentAttempt::where('cycle_id', $cycleId)
+            ->whereDate('assessment_date', $date)
+            ->first();
+    }
+
+    public function deleteAttemptsInRangeForCycle(int $cycleId, string $afterExclusive, string $beforeExclusive): void
+    {
+        $ids = AssessmentAttempt::where('cycle_id', $cycleId)
+            ->whereDate('assessment_date', '>', $afterExclusive)
+            ->whereDate('assessment_date', '<', $beforeExclusive)
+            ->pluck('id');
+
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        AssessmentAnswer::whereIn('attempt_id', $ids)->delete();
+        AssessmentAttempt::whereIn('id', $ids)->delete();
     }
 
     public function historyForUser(User $user): Collection

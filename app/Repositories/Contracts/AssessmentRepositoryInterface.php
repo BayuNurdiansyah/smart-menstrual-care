@@ -44,6 +44,15 @@ interface AssessmentRepositoryInterface
     /** Hapus attempt beserta seluruh jawabannya. */
     public function deleteAttempt(AssessmentAttempt $attempt): void;
 
+    /** Attempt pada tanggal tertentu milik siklus tertentu (untuk migrasi tanggal siklus). */
+    public function attemptForDateInCycle(int $cycleId, string $date): ?AssessmentAttempt;
+
+    /**
+     * Hapus semua attempt (beserta jawabannya) milik siklus tertentu
+     * yang assessment_date-nya STRICTLY antara $afterExclusive dan $beforeExclusive.
+     */
+    public function deleteAttemptsInRangeForCycle(int $cycleId, string $afterExclusive, string $beforeExclusive): void;
+
     /** Riwayat attempt murid untuk grafik tren (Recharts). */
     public function historyForUser(User $user): Collection;
 }
