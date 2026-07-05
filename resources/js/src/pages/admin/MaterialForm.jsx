@@ -23,6 +23,7 @@ export default function MaterialForm() {
     const [steps, setSteps] = useState([]); // [{ text, image_path, image_url }]
     const [images, setImages] = useState([]); // [{ image_path, image_url, caption }]
     const [audio, setAudio] = useState({ path: '', url: '' }); // narasi materi (opsional)
+    const [audioInputKey, setAudioInputKey] = useState(0); // reset <input type="file"> setelah upload/hapus
     const [errors, setErrors] = useState({});
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(isEdit);
@@ -90,6 +91,7 @@ export default function MaterialForm() {
         try {
             const res = await uploadAudio(file);
             setAudio({ path: res.data.path, url: res.data.url });
+            setAudioInputKey((k) => k + 1); // reset tampilan nama file setelah upload berhasil
         } catch {
             setMessage('Gagal mengunggah audio.');
         } finally {
@@ -104,6 +106,7 @@ export default function MaterialForm() {
             // file mungkin sudah tidak ada di storage, tetap bersihkan state
         }
         setAudio({ path: '', url: '' });
+        setAudioInputKey((k) => k + 1); // reset tampilan nama file setelah hapus
     };
 
     const handleSubmit = async (e) => {
@@ -188,6 +191,7 @@ export default function MaterialForm() {
                         </div>
                     )}
                     <input
+                        key={audioInputKey}
                         type="file"
                         accept="audio/*"
                         disabled={uploadingAudio}

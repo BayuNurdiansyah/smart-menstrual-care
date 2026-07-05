@@ -18,6 +18,7 @@ export default function WheelQuestionsAdmin() {
     const [form, setForm] = useState(blank);
     const [editId, setEditId] = useState(null);
     const [audioPreview, setAudioPreview] = useState({ path: '', url: '' });
+    const [audioInputKey, setAudioInputKey] = useState(0); // reset <input type="file"> setelah upload/hapus
     const [uploadingAudio, setUploadingAudio] = useState(false);
     const [error, setError] = useState('');
 
@@ -34,6 +35,7 @@ export default function WheelQuestionsAdmin() {
             setForm(blank);
             setEditId(null);
             setAudioPreview({ path: '', url: '' });
+            setAudioInputKey((k) => k + 1);
             load();
         } catch (err) {
             setError(err.response?.data?.message ?? 'Gagal menyimpan.');
@@ -68,6 +70,7 @@ export default function WheelQuestionsAdmin() {
         try {
             const res = await uploadWheelAudio(file);
             setAudioPreview({ path: res.data.path, url: res.data.url });
+            setAudioInputKey((k) => k + 1); // reset tampilan nama file setelah upload berhasil
         } catch {
             setError('Gagal mengunggah audio.');
         } finally {
@@ -83,9 +86,10 @@ export default function WheelQuestionsAdmin() {
             // file mungkin sudah tidak ada, tetap bersihkan state
         }
         setAudioPreview({ path: '', url: '' });
+        setAudioInputKey((k) => k + 1); // reset tampilan nama file setelah hapus
     };
 
-    const cancelEdit = () => { setEditId(null); setForm(blank); setAudioPreview({ path: '', url: '' }); };
+    const cancelEdit = () => { setEditId(null); setForm(blank); setAudioPreview({ path: '', url: '' }); setAudioInputKey((k) => k + 1); };
 
     const inp = 'w-full rounded-lg border-gray-300 px-3 py-2 text-sm';
 
@@ -122,6 +126,7 @@ export default function WheelQuestionsAdmin() {
                             </div>
                         )}
                         <input
+                            key={audioInputKey}
                             type="file"
                             accept="audio/*"
                             disabled={uploadingAudio}
