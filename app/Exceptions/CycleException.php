@@ -16,4 +16,12 @@ class CycleException extends DomainException
 
         return $e;
     }
+
+    public static function endBeforeStart(): self
+    {
+        $e = new self('Tanggal berakhir tidak boleh lebih kecil dari tanggal mulai menstruasi.');
+        $e->status = 422;
+
+        return $e;
+    }
 }

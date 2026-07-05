@@ -154,6 +154,14 @@ class CycleService
             'notes'         => $data['notes'] ?? null,
         ], static fn ($value) => $value !== null);
 
+        // Validasi: end_date tidak boleh lebih kecil dari start_date siklus.
+        if (! empty($payload['end_date'])) {
+            $effectiveStart = $payload['start_date'] ?? $cycle->start_date->toDateString();
+            if ($payload['end_date'] < $effectiveStart) {
+                throw CycleException::endBeforeStart();
+            }
+        }
+
         // Penutupan manual: end_date diisi -> status closed, bukan auto.
         $isClosing = ! empty($payload['end_date']);
         if ($isClosing) {

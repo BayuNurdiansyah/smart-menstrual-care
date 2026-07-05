@@ -588,6 +588,9 @@ export default function KalenderTracker() {
                 const day = combinedAssessData?.day ?? null;
                 const belongsToActiveCycle = isMenstruating && combinedAssessData?.cycle_id === status.cycle?.id;
                 const canFinish = belongsToActiveCycle && day !== null && day >= (status.finish_from_day ?? 6);
+                // min tanggal untuk date picker: jika mengedit end_date, tidak boleh < start_date siklus
+                const editedCycle = allCycles.find((c) => c.id === editCycleId);
+                const dateMin = modal.field === 'end_date' ? (editedCycle?.start_date ?? '') : '';
                 return (
                     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
                         <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white shadow-xl sm:rounded-3xl">
@@ -615,6 +618,7 @@ export default function KalenderTracker() {
                                     <input
                                         type="date"
                                         value={editDate}
+                                        min={dateMin}
                                         max={todayYmd()}
                                         onChange={(e) => setEditDate(e.target.value)}
                                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
