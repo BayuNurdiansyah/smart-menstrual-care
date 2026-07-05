@@ -60,6 +60,7 @@ Route::prefix('v1')->group(function () {
             Route::get('assessments/assessed-dates',  [AssessmentController::class, 'assessedDates']);
             Route::get('assessments/answers',         [AssessmentController::class, 'answers']);
             Route::post('assessments',                [AssessmentController::class, 'store']);
+            Route::delete('assessments',              [AssessmentController::class, 'destroy']);
             Route::get('assessments/chart',           [AssessmentController::class, 'getChartData']);
 
             // Gamifikasi

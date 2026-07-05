@@ -123,6 +123,14 @@ class AssessmentRepository implements AssessmentRepositoryInterface
         });
     }
 
+    public function deleteAttempt(AssessmentAttempt $attempt): void
+    {
+        DB::transaction(function () use ($attempt) {
+            $attempt->answers()->delete();
+            $attempt->delete();
+        });
+    }
+
     public function historyForUser(User $user): Collection
     {
         // Eager load jawaban + pertanyaan untuk grafik per-kategori (hindari N+1).

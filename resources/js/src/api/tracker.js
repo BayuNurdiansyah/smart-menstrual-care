@@ -26,4 +26,7 @@ export const getAssessmentAnswers = (date) => api.get('/assessments/answers', { 
 // Jika tanggal sudah pernah diisi, jawabannya diperbarui (bukan ditolak).
 export const submitDailyAssessment = (payload) => api.post('/assessments', payload);
 
+// Hapus assessment pada satu tanggal.
+export const deleteAssessment = (date) => api.delete('/assessments', { data: { date } });
+
 export const getAssessmentChart = () => api.get('/assessments/chart');

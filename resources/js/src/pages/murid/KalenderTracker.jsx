@@ -14,6 +14,7 @@ import {
     getAssessmentQuestions,
     getAssessmentChart,
     submitDailyAssessment,
+    deleteAssessment,
 } from '../../api/tracker';
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -71,6 +72,12 @@ export default function KalenderTracker() {
     const [editDate, setEditDate] = useState('');
     const [editField, setEditField] = useState('start_date');
     const [editCycleId, setEditCycleId] = useState(null);
+
+    // state untuk combined modal (koreksi siklus + assessment sekaligus)
+    const [combinedAssessLoading, setCombinedAssessLoading] = useState(false);
+    const [combinedAssessData, setCombinedAssessData]       = useState(null);
+    const [combinedAnswers, setCombinedAnswers]             = useState({});
+    const [combinedFinished, setCombinedFinished]           = useState(false);
 
     const isMenstruating = status.active;
     const assessedSet = useMemo(() => new Set(assessedDates), [assessedDates]);
@@ -176,13 +183,28 @@ export default function KalenderTracker() {
         const today = todayYmd();
         if (ymd > today) return; // tanggal masa depan diabaikan
 
-        // 1. Marker mulai/berakhir siklus → PRIORITAS TERTINGGI, buka edit siklus
+        // 1. Marker mulai/berakhir siklus → combined modal (koreksi tanggal + assessment)
         if (cycleDateMap.has(ymd)) {
             const { id, field } = cycleDateMap.get(ymd);
             setEditCycleId(id);
             setEditField(field);
             setEditDate(ymd);
-            setModal({ mode: 'edit_cycle', field });
+            setCombinedAssessLoading(true);
+            setCombinedAssessData(null);
+            setCombinedAnswers({});
+            setCombinedFinished(false);
+            setModal({ mode: 'combined', field, date: ymd });
+            getAssessmentAnswers(ymd)
+                .then((res) => {
+                    const data = res.data.data ?? {};
+                    setCombinedAssessData(data);
+                    const prefilled = Object.fromEntries(
+                        Object.entries(data.answers ?? {}).map(([qid, score]) => [Number(qid), Number(score)])
+                    );
+                    setCombinedAnswers(prefilled);
+                })
+                .catch(() => setCombinedAssessData({ answers: {}, day: null, cycle_id: null }))
+                .finally(() => setCombinedAssessLoading(false));
             return;
         }
 
@@ -273,6 +295,43 @@ export default function KalenderTracker() {
             await load();
         } catch (err) {
             setError(err.response?.data?.message ?? 'Gagal menyimpan assessment.');
+        } finally { setBusy(false); }
+    };
+
+    // ── combined modal: submit assessment ────────────────────────────────────
+    const combinedAllAnswered = questions.length > 0 && questions.every((q) => combinedAnswers[q.id] !== undefined);
+
+    const submitCombinedAssess = async () => {
+        if (!modal?.date) return;
+        setBusy(true); setError('');
+        try {
+            await submitDailyAssessment({ date: modal.date, answers: combinedAnswers, finished: combinedFinished });
+            // Refresh assessment data in modal (tetap buka)
+            const res = await getAssessmentAnswers(modal.date);
+            const data = res.data.data ?? {};
+            setCombinedAssessData(data);
+            const prefilled = Object.fromEntries(
+                Object.entries(data.answers ?? {}).map(([qid, score]) => [Number(qid), Number(score)])
+            );
+            setCombinedAnswers(prefilled);
+            setCombinedFinished(false);
+            await load();
+        } catch (err) {
+            setError(err.response?.data?.message ?? 'Gagal menyimpan assessment.');
+        } finally { setBusy(false); }
+    };
+
+    // ── combined modal: hapus assessment ─────────────────────────────────────
+    const deleteCombinedAssess = async () => {
+        if (!modal?.date) return;
+        setBusy(true); setError('');
+        try {
+            await deleteAssessment(modal.date);
+            setCombinedAssessData({ answers: {}, day: null, cycle_id: null });
+            setCombinedAnswers({});
+            await load();
+        } catch (err) {
+            setError(err.response?.data?.message ?? 'Gagal menghapus assessment.');
         } finally { setBusy(false); }
     };
 
@@ -498,7 +557,7 @@ export default function KalenderTracker() {
                 </div>
             )}
 
-            {/* ── Modal: Koreksi tanggal mulai / berakhir siklus ────────────────── */}
+            {/* ── Modal: Koreksi tanggal mulai / berakhir siklus (legacy, tidak dipakai lagi) ── */}
             {modal?.mode === 'edit_cycle' && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6 backdrop-blur-sm" role="dialog" aria-modal="true">
                     <div className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-xl">
@@ -522,6 +581,132 @@ export default function KalenderTracker() {
                     </div>
                 </div>
             )}
+
+            {/* ── Modal: Combined — Koreksi tanggal siklus + Assessment ─────────── */}
+            {modal?.mode === 'combined' && (() => {
+                const hasExistingAssess = combinedAssessData && Object.keys(combinedAssessData.answers ?? {}).length > 0;
+                const day = combinedAssessData?.day ?? null;
+                const belongsToActiveCycle = isMenstruating && combinedAssessData?.cycle_id === status.cycle?.id;
+                const canFinish = belongsToActiveCycle && day !== null && day >= (status.finish_from_day ?? 6);
+                return (
+                    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center" role="dialog" aria-modal="true">
+                        <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white shadow-xl sm:rounded-3xl">
+                            {/* Header */}
+                            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-800">
+                                        {modal.field === 'start_date' ? 'Tanggal Mulai Menstruasi' : 'Tanggal Berakhir Menstruasi'}
+                                    </p>
+                                    <p className="text-xs text-gray-500">{modal.date}</p>
+                                </div>
+                                <button type="button" onClick={() => setModal(null)} className="text-gray-400 hover:text-gray-600">
+                                    <i className="fa-solid fa-xmark text-lg" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-5 p-5">
+                                {/* ── Seksi 1: Koreksi tanggal siklus ── */}
+                                <section className="rounded-xl border border-gray-200 p-4">
+                                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">
+                                        Koreksi Tanggal {modal.field === 'start_date' ? 'Mulai' : 'Berakhir'}
+                                    </p>
+                                    <p className="mb-3 text-xs text-gray-400">Ubah jika salah input tanggal sebelumnya.</p>
+                                    <label className="block text-xs font-semibold text-gray-700 mb-1">Tanggal</label>
+                                    <input
+                                        type="date"
+                                        value={editDate}
+                                        max={todayYmd()}
+                                        onChange={(e) => setEditDate(e.target.value)}
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={confirmEditCycle}
+                                        disabled={busy || !editDate}
+                                        className="mt-3 w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:opacity-60"
+                                    >
+                                        {busy ? 'Menyimpan...' : 'Simpan Koreksi Tanggal'}
+                                    </button>
+                                </section>
+
+                                {/* ── Seksi 2: Assessment ── */}
+                                <section className="rounded-xl border border-gray-200 p-4">
+                                    <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">
+                                        Assessment Harian
+                                        {day !== null && <span className="ml-1 normal-case font-normal text-gray-400">— hari ke-{day}</span>}
+                                    </p>
+
+                                    {combinedAssessLoading ? (
+                                        <p className="py-4 text-center text-sm text-gray-400">Memuat...</p>
+                                    ) : (
+                                        <>
+                                            <div className="mb-3">
+                                                <SpeakButton
+                                                    label="Dengarkan pertanyaan"
+                                                    audioSrc="/audio/assessment/pertanyaan-harian.mp3"
+                                                    text={
+                                                        `Assessment${day !== null ? ` hari ke ${day}` : ''}. Pilihan: ${OPTIONS.map((o) => o.label).join(', ')}. ` +
+                                                        questions.map((q, i) => `Pertanyaan ${i + 1}. ${q.question_text}.`).join(' ')
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="space-y-4">
+                                                {questions.map((q, idx) => (
+                                                    <fieldset key={q.id}>
+                                                        <legend className="text-sm font-semibold text-gray-800">{idx + 1}. {q.question_text}</legend>
+                                                        <div className="mt-2 grid grid-cols-3 gap-2">
+                                                            {OPTIONS.map((opt) => (
+                                                                <label key={opt.value} className={`cursor-pointer rounded-lg border px-2 py-2 text-center text-xs font-medium ${combinedAnswers[q.id] === opt.value ? 'border-primary bg-primary-50 text-primary-800' : 'border-gray-200 text-gray-600'}`}>
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`cq_${q.id}`}
+                                                                        className="sr-only"
+                                                                        checked={combinedAnswers[q.id] === opt.value}
+                                                                        onChange={() => setCombinedAnswers((p) => ({ ...p, [q.id]: opt.value }))}
+                                                                    />
+                                                                    {opt.label}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </fieldset>
+                                                ))}
+                                            </div>
+
+                                            {canFinish && (
+                                                <label className="mt-4 flex items-start gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                                                    <input type="checkbox" checked={combinedFinished} onChange={(e) => setCombinedFinished(e.target.checked)} className="mt-0.5" />
+                                                    <span>Menstruasi saya <b>sudah selesai</b> hari ini.</span>
+                                                </label>
+                                            )}
+
+                                            <button
+                                                type="button"
+                                                onClick={submitCombinedAssess}
+                                                disabled={!combinedAllAnswered || busy}
+                                                className="btn-primary mt-4 w-full"
+                                            >
+                                                {busy ? 'Menyimpan...' : combinedFinished ? 'Simpan & Akhiri Menstruasi' : hasExistingAssess ? 'Simpan Perubahan Assessment' : 'Simpan Assessment'}
+                                            </button>
+
+                                            {hasExistingAssess && (
+                                                <button
+                                                    type="button"
+                                                    onClick={deleteCombinedAssess}
+                                                    disabled={busy}
+                                                    className="mt-2 w-full rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60"
+                                                >
+                                                    <i className="fa-solid fa-trash mr-1" />
+                                                    Hapus Assessment
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </section>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Modal: Assessment harian ───────────────────────────────────────── */}
             {modal?.mode === 'assess' && (

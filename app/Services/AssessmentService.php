@@ -180,6 +180,20 @@ class AssessmentService
     }
 
     /**
+     * Hapus assessment pada tanggal tertentu milik murid.
+     * Tidak melempar error jika tanggal belum pernah diisi.
+     */
+    public function deleteAssessment(int $userId, string $date): void
+    {
+        $target  = Carbon::parse($date)->startOfDay();
+        $attempt = $this->assessmentRepository->attemptForDate($userId, $target->toDateString());
+
+        if ($attempt !== null) {
+            $this->assessmentRepository->deleteAttempt($attempt);
+        }
+    }
+
+    /**
      * Seluruh tanggal (Y-m-d) yang sudah diisi assessment oleh murid, lintas
      * siklus (dipakai kalender untuk menandai hari yang benar-benar terisi).
      */

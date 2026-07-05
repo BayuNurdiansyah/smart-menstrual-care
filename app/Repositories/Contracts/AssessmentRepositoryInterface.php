@@ -41,6 +41,9 @@ interface AssessmentRepositoryInterface
     /** Perbarui attempt yang sudah ada beserta jawaban-jawabannya (ganti total). */
     public function updateAttemptWithAnswers(AssessmentAttempt $attempt, array $attemptData, array $answers): AssessmentAttempt;
 
+    /** Hapus attempt beserta seluruh jawabannya. */
+    public function deleteAttempt(AssessmentAttempt $attempt): void;
+
     /** Riwayat attempt murid untuk grafik tren (Recharts). */
     public function historyForUser(User $user): Collection;
 }

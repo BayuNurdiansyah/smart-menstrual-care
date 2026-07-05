@@ -66,6 +66,14 @@ class AssessmentController extends Controller
         ], 201);
     }
 
+    public function destroy(Request $request): JsonResponse
+    {
+        $data = $request->validate(['date' => ['required', 'date']]);
+        $this->assessmentService->deleteAssessment($request->user()->id, $data['date']);
+
+        return response()->json(['message' => 'Assessment dihapus.']);
+    }
+
     public function getChartData(Request $request): JsonResponse
     {
         $chart = $this->assessmentService->getFormattedChartData($request->user()->id);
