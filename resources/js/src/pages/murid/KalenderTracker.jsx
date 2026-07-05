@@ -228,7 +228,19 @@ export default function KalenderTracker() {
             return;
         }
 
-        // 4. Tidak sedang menstruasi, tanggal kosong → tawarkan mulai siklus
+        // 4. Tanggal dalam rentang siklus yang sudah closed, belum diisi → isi assessment
+        const cycleCovering = allCycles.find((c) => {
+            if (!c.start_date) return false;
+            const end = c.end_date ?? todayYmd();
+            return ymd >= c.start_date && ymd <= end;
+        });
+        if (cycleCovering) {
+            const dayNum = Math.floor((new Date(ymd) - new Date(cycleCovering.start_date)) / 86400000) + 1;
+            openAssess(ymd, dayNum, false);
+            return;
+        }
+
+        // 5. Tanggal kosong di luar siklus manapun → tawarkan mulai siklus
         setModal({ mode: 'start', date: ymd });
     };
 

@@ -97,17 +97,20 @@ class AssessmentService
 
         $target = Carbon::parse($date)->startOfDay();
         $existing = $this->assessmentRepository->attemptForDate($userId, $target->toDateString());
-        $cycle = $this->cycleService->getCurrentCycle($userId);
-        $cycleIsOngoingForTarget = $cycle !== null && $cycle->status === 'ongoing';
+
+        // Siklus yang sedang berjalan (ongoing), jika ada.
+        $ongoingCycle = $this->cycleService->getCurrentCycle($userId);
+        $cycleIsOngoingForTarget = $ongoingCycle !== null && $ongoingCycle->status === 'ongoing';
+
+        // Siklus (ongoing atau closed) yang date range-nya mencakup tanggal ini.
+        $cycleForDate = $this->cycleService->getCycleForDate($userId, $target->toDateString());
 
         if ($existing === null) {
-            // Submission baru: wajib ada siklus berjalan & tanggal dalam rentangnya.
-            if (! $cycleIsOngoingForTarget) {
+            // Submission baru: harus ada siklus yang mencakup tanggal ini.
+            if ($cycleForDate === null) {
                 throw AssessmentException::noActiveCycle();
             }
-
-            $start = $cycle->start_date->copy()->startOfDay();
-            if ($target->lt($start) || $target->gt(Carbon::today())) {
+            if ($target->gt(Carbon::today())) {
                 throw AssessmentException::invalidDate();
             }
         }
@@ -119,8 +122,9 @@ class AssessmentService
 
         $attemptData = [
             'user_id'         => $userId,
-            // Koreksi: pertahankan cycle_id aslinya. Baru: pakai siklus berjalan.
-            'cycle_id'        => $existing?->cycle_id ?? $cycle->id,
+            // Koreksi: pertahankan cycle_id aslinya.
+            // Baru: pakai siklus yang mencakup tanggal ini (bisa closed atau ongoing).
+            'cycle_id'        => $existing?->cycle_id ?? $cycleForDate?->id,
             'assessment_date' => $target->toDateString(),
             'total_score'     => array_sum($answers),
             'submitted_at'    => Carbon::now(),
@@ -131,9 +135,9 @@ class AssessmentService
             : $this->assessmentRepository->createAttemptWithAnswers($attemptData, $rows);
 
         // Pilihan "selesai" -> tutup siklus, hanya jika tanggal ini memang
-        // bagian dari siklus yang SEDANG berjalan (bukan koreksi siklus lama).
+        // bagian dari siklus yang SEDANG berjalan (bukan siklus yang sudah closed).
         $closed = false;
-        if ($finished && $cycleIsOngoingForTarget && $attemptData['cycle_id'] === $cycle->id) {
+        if ($finished && $cycleIsOngoingForTarget && $attemptData['cycle_id'] === $ongoingCycle->id) {
             $this->cycleService->finishCycle($userId, $target->toDateString());
             $closed = true;
         }

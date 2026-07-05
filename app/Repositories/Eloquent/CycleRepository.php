@@ -53,4 +53,17 @@ class CycleRepository implements CycleRepositoryInterface
 
         return $cycle->refresh();
     }
+
+    public function findForDate(int $userId, string $date): ?Cycle
+    {
+        return Cycle::where('user_id', $userId)
+            ->whereDate('start_date', '<=', $date)
+            ->where(function ($q) use ($date) {
+                // Siklus ongoing (end_date null) atau closed yang mencakup tanggal ini
+                $q->whereNull('end_date')
+                  ->orWhereDate('end_date', '>=', $date);
+            })
+            ->latest('start_date')
+            ->first();
+    }
 }

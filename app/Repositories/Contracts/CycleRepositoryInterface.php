@@ -22,4 +22,11 @@ interface CycleRepositoryInterface
 
     /** Tutup siklus (set end_date, status, dan flag auto_closed bila perlu). */
     public function close(Cycle $cycle, string $endDate, bool $auto = false): Cycle;
+
+    /**
+     * Temukan siklus (ongoing atau closed) milik user yang date range-nya
+     * mencakup tanggal tertentu (start_date <= date <= end_date).
+     * Dipakai untuk mengisi assessment pada siklus yang sudah ditutup.
+     */
+    public function findForDate(int $userId, string $date): ?Cycle;
 }

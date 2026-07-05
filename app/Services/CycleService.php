@@ -88,6 +88,15 @@ class CycleService
     }
 
     /**
+     * Temukan siklus (ongoing atau closed) yang date range-nya mencakup tanggal tertentu.
+     * Dipakai AssessmentService untuk memvalidasi & menentukan cycle_id submission baru.
+     */
+    public function getCycleForDate(int $userId, string $date): ?Cycle
+    {
+        return $this->cycleRepository->findForDate($userId, $date);
+    }
+
+    /**
      * Mulai siklus baru. Pastikan tidak ada siklus berjalan yang masih terbuka
      * (lazy-close dievaluasi lebih dulu lewat getCurrentCycle).
      */
