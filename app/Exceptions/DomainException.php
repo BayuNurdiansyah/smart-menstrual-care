@@ -17,9 +17,16 @@ abstract class DomainException extends RuntimeException
     /** Detik tunggu sebelum boleh mengulang (opsional, untuk rate limit). */
     public ?int $retryAfter = null;
 
+    /** Kode mesin opsional agar frontend bisa membedakan jenis error tanpa parsing pesan. */
+    public ?string $errorCode = null;
+
     public function render($request): JsonResponse
     {
         $payload = ['message' => $this->getMessage()];
+
+        if ($this->errorCode !== null) {
+            $payload['error_code'] = $this->errorCode;
+        }
 
         if ($this->retryAfter !== null) {
             $payload['retry_after'] = $this->retryAfter;

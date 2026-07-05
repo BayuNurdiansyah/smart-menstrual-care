@@ -6,7 +6,11 @@ class CycleException extends DomainException
 {
     public static function alreadyOngoing(): self
     {
-        return new self('Masih ada siklus yang sedang berjalan. Tutup dulu sebelum memulai yang baru.');
+        $e = new self('Masih ada siklus yang sedang berjalan. Tutup dulu sebelum memulai yang baru.');
+        $e->errorCode = 'already_ongoing';
+        $e->status    = 409;
+
+        return $e;
     }
 
     public static function notFound(): self

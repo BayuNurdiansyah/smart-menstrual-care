@@ -7,19 +7,10 @@ use App\Models\Cycle;
 use App\Models\User;
 use App\Repositories\Contracts\AssessmentRepositoryInterface;
 use App\Repositories\Contracts\CycleRepositoryInterface;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class CycleService
 {
-    /**
-     * Batas maksimal lama satu siklus haid (hari). Lebih dari ini,
-     * siklus dianggap lupa ditutup dan akan di-auto-close — TAPI hanya
-     * jika siklus juga sudah ada di DB lebih dari MAX_PERIOD_DAYS hari
-     * (mencegah auto-close saat user baru saja input data historis).
-     */
-    private const MAX_PERIOD_DAYS = 10;
-
     /** Slug tahap yang badge-nya diberikan saat siklus pertama ditutup. */
     private const HEALTHY_HABIT_SLUG = 'healthy-habit-builder';
 
@@ -40,37 +31,15 @@ class CycleService
     }
 
     /**
-     * Ambil siklus berjalan milik murid dengan LAZY EVALUATION.
-     * Auto-close hanya dipicu jika:
-     *   1. start_date sudah lebih dari MAX_PERIOD_DAYS yang lalu, DAN
-     *   2. created_at siklus juga sudah lebih dari MAX_PERIOD_DAYS yang lalu.
-     * Syarat (2) mencegah siklus yang baru dibuat untuk input data historis
-     * langsung di-close sebelum user sempat mengisi assessment.
+     * Ambil siklus berjalan milik murid.
+     * Auto-close dihapus: user bertanggung jawab menutup siklus secara manual
+     * lewat "Tandai Berakhir" atau combined modal koreksi tanggal.
+     * Siklus yang terlalu lama terbuka akan mendapat peringatan di UI, bukan
+     * ditutup paksa, sehingga input data historis tetap bisa dilakukan kapan saja.
      */
     public function getCurrentCycle(int $userId): ?Cycle
     {
-        $cycle = $this->cycleRepository->ongoingForUser($userId);
-
-        if ($cycle === null) {
-            return null;
-        }
-
-        if ($cycle->end_date === null) {
-            $elapsedSinceStart   = $cycle->start_date->diffInDays(Carbon::today());
-            $elapsedSinceCreated = $cycle->created_at->startOfDay()->diffInDays(Carbon::today());
-
-            if ($elapsedSinceStart > self::MAX_PERIOD_DAYS && $elapsedSinceCreated > self::MAX_PERIOD_DAYS) {
-                $autoEndDate = $cycle->start_date->copy()->addDays(self::MAX_PERIOD_DAYS);
-                $cycle = $this->cycleRepository->close(
-                    $cycle,
-                    $autoEndDate->toDateString(),
-                    auto: true
-                );
-                $this->onCycleClosed($userId);
-            }
-        }
-
-        return $cycle;
+        return $this->cycleRepository->ongoingForUser($userId);
     }
 
     /**

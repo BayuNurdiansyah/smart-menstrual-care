@@ -236,10 +236,10 @@ export default function KalenderTracker() {
     const confirmStart = async () => {
         setBusy(true); setError('');
         try {
-            const startDate = modal.date;
+            const startDate = modal.date ?? modal.newDate;
             await startCycle({ start_date: startDate });
             const freshStatus = await load();
-            if (freshStatus) {
+            if (freshStatus?.active) {
                 const pending = (freshStatus.pending_dates ?? []).find((p) => p.date === startDate);
                 const day = pending?.day ?? 1;
                 const canFinish = day >= (freshStatus.finish_from_day ?? 6);
@@ -248,7 +248,36 @@ export default function KalenderTracker() {
                 setModal(null);
             }
         } catch (err) {
-            setError(err.response?.data?.message ?? 'Gagal memulai.');
+            // Siklus lama belum ditutup → tampilkan modal khusus tutup dulu
+            if (err.response?.data?.error_code === 'already_ongoing') {
+                const newDate = modal.date ?? modal.newDate;
+                setEditDate(todayYmd());
+                setModal({ mode: 'close_old_first', newDate });
+            } else {
+                setError(err.response?.data?.message ?? 'Gagal memulai.');
+            }
+        } finally { setBusy(false); }
+    };
+
+    // ── tutup siklus lama lalu langsung mulai siklus baru ────────────────────
+    const closeOldAndStart = async () => {
+        if (!current || !editDate) return;
+        setBusy(true); setError('');
+        try {
+            await editCycle(current.id, { end_date: editDate });
+            const startDate = modal.newDate;
+            await startCycle({ start_date: startDate });
+            const freshStatus = await load();
+            if (freshStatus?.active) {
+                const pending = (freshStatus.pending_dates ?? []).find((p) => p.date === startDate);
+                const day = pending?.day ?? 1;
+                const canFinish = day >= (freshStatus.finish_from_day ?? 6);
+                openAssess(startDate, day, canFinish);
+            } else {
+                setModal(null);
+            }
+        } catch (err) {
+            setError(err.response?.data?.message ?? 'Gagal memproses.');
         } finally { setBusy(false); }
     };
 
@@ -350,24 +379,40 @@ export default function KalenderTracker() {
                 {loading ? <p className="text-gray-500">Memuat...</p> : (
                     <>
                         {/* Banner status aktif */}
-                        {isMenstruating && (
-                            <div className="rounded-2xl bg-primary-50 px-4 py-3 text-sm text-primary-800 space-y-2">
-                                <p>
-                                    Sedang menstruasi sejak <b>{current?.start_date}</b> (hari ke-{activeCycleDay}).
-                                    {(status.pending_dates ?? []).length > 0
-                                        ? <> Ada <b>{status.pending_dates.length}</b> hari perlu diisi — ketuk tanggalnya.</>
-                                        : ' Assessment hari ini sudah lengkap.'}
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={openEndModal}
-                                    className="w-full rounded-lg border border-primary-400 bg-white px-3 py-2 text-sm font-semibold text-primary-700 hover:bg-primary-100"
-                                >
-                                    <i className="fa-solid fa-flag-checkered mr-1" />
-                                    Tandai Menstruasi Berakhir
-                                </button>
-                            </div>
-                        )}
+                        {isMenstruating && (() => {
+                            const overdue = activeCycleDay > 10;
+                            return (
+                                <div className={`rounded-2xl px-4 py-3 text-sm space-y-2 ${overdue ? 'bg-amber-50 border border-amber-200 text-amber-900' : 'bg-primary-50 text-primary-800'}`}>
+                                    {overdue && (
+                                        <p className="font-semibold flex items-center gap-1">
+                                            <i className="fa-solid fa-triangle-exclamation text-amber-500" />
+                                            Menstruasimu sudah hari ke-{activeCycleDay}. Sudah selesai? Segera tandai berakhir!
+                                        </p>
+                                    )}
+                                    {!overdue && (
+                                        <p>
+                                            Sedang menstruasi sejak <b>{current?.start_date}</b> (hari ke-{activeCycleDay}).
+                                            {(status.pending_dates ?? []).length > 0
+                                                ? <> Ada <b>{status.pending_dates.length}</b> hari perlu diisi — ketuk tanggalnya.</>
+                                                : ' Assessment hari ini sudah lengkap.'}
+                                        </p>
+                                    )}
+                                    {overdue && (status.pending_dates ?? []).length > 0 && (
+                                        <p className="text-xs text-amber-700">
+                                            Ada <b>{status.pending_dates.length}</b> hari assessment belum diisi — ketuk tanggalnya di kalender.
+                                        </p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={openEndModal}
+                                        className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold ${overdue ? 'border-amber-400 bg-white text-amber-700 hover:bg-amber-100' : 'border-primary-400 bg-white text-primary-700 hover:bg-primary-100'}`}
+                                    >
+                                        <i className="fa-solid fa-flag-checkered mr-1" />
+                                        Tandai Menstruasi Berakhir
+                                    </button>
+                                </div>
+                            );
+                        })()}
 
                         {/* Navigasi bulan */}
                         <div className="flex items-center justify-between">
@@ -482,6 +527,47 @@ export default function KalenderTracker() {
                         <div className="mt-5 flex gap-3">
                             <button type="button" onClick={() => setModal(null)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Batal</button>
                             <button type="button" onClick={confirmStart} disabled={busy} className="btn-primary flex-1 py-2 text-sm">{busy ? 'Memproses...' : 'Ya, Mulai'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Modal: Tutup siklus lama dulu sebelum mulai baru ──────────────── */}
+            {modal?.mode === 'close_old_first' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6 backdrop-blur-sm" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+                        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                            <i className="fa-solid fa-triangle-exclamation text-xl" />
+                        </div>
+                        <p className="text-center text-sm font-bold text-gray-800">Siklus Sebelumnya Belum Ditutup</p>
+                        <p className="mt-1 text-center text-xs text-gray-500 mb-4">
+                            Siklus yang dimulai <b>{current?.start_date}</b> masih berjalan.
+                            Tutup dulu sebelum memulai siklus baru pada <b>{modal.newDate}</b>.
+                        </p>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                            Tanggal berakhir siklus lama
+                        </label>
+                        <input
+                            type="date"
+                            value={editDate}
+                            min={current?.start_date ?? ''}
+                            max={todayYmd()}
+                            onChange={(e) => setEditDate(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                        <p className="mt-1 text-xs text-gray-400">Isi tanggal kapan mens sebelumnya selesai.</p>
+                        <div className="mt-4 flex gap-3">
+                            <button type="button" onClick={() => setModal(null)} className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={closeOldAndStart}
+                                disabled={busy || !editDate}
+                                className="flex-1 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                            >
+                                {busy ? 'Memproses...' : 'Tutup & Mulai Baru'}
+                            </button>
                         </div>
                     </div>
                 </div>
